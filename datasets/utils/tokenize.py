@@ -148,7 +148,7 @@ PUNCTUATIONS = list('~`!@#$%^&*()-+={[]}|\\;:\'\"<,>.?/')
 class Tokenizer:
     def __init__(self, path):
         index = clang.cindex.Index.create()
-        self.tu = index.parse(path)             # translation unit
+        self.translation_unit = index.parse(path)
         self.path = self.extract_path(path)
 
     @staticmethod
@@ -184,13 +184,13 @@ class Tokenizer:
         return result
 
     def full_tokenize(self):
-        cursor = self.tu.cursor
+        cursor = self.translation_unit.cursor
         return self.full_tokenize_cursor(cursor)
 
-    def split_functions(self, method_only=False):
+    def split(self, method_only=False):
         results = []
         cursor_kind = clang.cindex.CursorKind
-        cursor = self.tu.cursor
+        cursor = self.translation_unit.cursor
 
         for child in cursor.get_children():
             path = child.location.file.name if child.location.file is not None else "NONE"
@@ -210,7 +210,7 @@ def tokenize(code):
         with open('/tmp/test.cpp', 'w') as f:
             f.write(code)
         tokenizer = Tokenizer('/tmp/test.cpp')
-        results = tokenizer.split_functions(False)
+        results = tokenizer.split(False)
         return ' '.join(results[0])
     except Exception:
         return None
@@ -272,3 +272,24 @@ if __name__ == '__main__':
     print(code)
     print('=' * 50)
     print(symbolic_tokenize(code))
+
+    # my_tokenizer = Tokenizer(BPE(unk_token="<unk>"))
+    # my_tokenizer.normalizer = normalizers.Sequence(
+    #     [normalizers.StripAccents(), normalizers.Replace(" ", "Ä")])
+    # my_tokenizer.pre_tokenizer = PreTokenizer.custom(MyTokenizer())
+    # my_tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
+    # my_tokenizer.post_processor = processors.TemplateProcessing(
+    #     single="<s> $A </s>",
+    #     special_tokens=[
+    #         ("<s>", 0),
+    #         ("<pad>", 1),
+    #         ("</s>", 2),
+    #         ("<unk>", 3),
+    #         ("<mask>", 4)
+    #     ]
+    # )
+
+    # trainer = BpeTrainer(vocab_size=50000, min_frequency=2,
+    #                      show_progress=True, special_tokens=special_tokens)
+    # my_tokenizer.train(['data/tokenizer/drapgh.txt'], trainer)
+    # my_tokenizer.model.save("./tokenizer/", "drapgh")
