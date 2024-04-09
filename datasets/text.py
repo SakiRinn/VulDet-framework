@@ -1,64 +1,33 @@
-import numpy as np
+from abc import abstractmethod
 import torch
-from torch.utils.data import Dataset
-import json
-import logging
 
-logger = logging.getLogger(__name__)
+from datasets.base import BaseDataset, DataEntry
 
 
-class InputFeatures(object):
-    """A single training/test features for a example."""
+class TextEntry(DataEntry):
 
-    def __init__(self,
-                 input_tokens, input_ids,
-                 idx, label):
-        self.input_tokens = input_tokens
-        self.input_ids = input_ids
-        self.idx = str(idx)
-        self.label = label
+    def __init__(self, idx, tokens, ids, label=None):
+        super().__init__(idx, label)
+        self.tokens = tokens
+        self.ids = ids
 
-
-def convert_examples_to_features(js, tokenizer, args):
-    # source
-    code = ' '.join(js['func'].split())
-    code_tokens = tokenizer.tokenize(code)[:args.block_size - 2]
-    source_tokens = [tokenizer.cls_token] + code_tokens + [tokenizer.sep_token]
-    source_ids = tokenizer.convert_tokens_to_ids(source_tokens)
-    padding_length = args.block_size - len(source_ids)
-    source_ids += [tokenizer.pad_token_id] * padding_length
-    return InputFeatures(source_tokens, source_ids, js['idx'], js['target'])
+    def __str__(self):
+        string = super().__str__()
+        string += "input_tokens: {}\n".format([x.replace('\u0120', '_') for x in self.tokens])
+        string += "input_ids: {}\n".format(' '.join(map(str, self.ids)))
+        return string
 
 
-class TextDataset(Dataset):
-    def __init__(self, tokenizer, args, file_path=None, sample_percent=1.):
-        self.examples = []
-        with open(file_path) as f:
-            for line in f:
-                js = json.loads(line.strip())
-                self.examples.append(convert_examples_to_features(js, tokenizer, args))
+class TextDataset(BaseDataset):
 
-        total_len = len(self.examples)
-        num_keep = int(sample_percent * total_len)
+    def __getitem__(self, idx):
+        return torch.tensor(self.data[idx].ids), torch.tensor(self.data[idx].label)
 
-        if num_keep < total_len:
-            np.random.seed(10)
-            np.random.shuffle(self.examples)
-            self.examples = self.examples[:num_keep]
-
-        if 'train' in file_path:
-            logger.info("*** Total Sample ***")
-            logger.info("\tTotal: {}\tselected: {}\tpercent: {}\t".format(total_len, num_keep, sample_percent))
-            for idx, example in enumerate(self.examples[:3]):
-                logger.info("*** Sample ***")
-                logger.info("Total sample".format(idx))
-                logger.info("idx: {}".format(idx))
-                logger.info("label: {}".format(example.label))
-                logger.info("input_tokens: {}".format([x.replace('\u0120', '_') for x in example.input_tokens]))
-                logger.info("input_ids: {}".format(' '.join(map(str, example.input_ids))))
-
-    def __len__(self):
-        return len(self.examples)
-
-    def __getitem__(self, i):
-        return torch.tensor(self.examples[i].input_ids), torch.tensor(self.examples[i].label)
+    @staticmethod
+    def text_tokenize(text, tokenizer, max_size=256):
+        tokens = tokenizer.tokenize(text)[:max_size - 2]
+        tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
+        ids = tokenizer.convert_tokens_to_ids(tokens)
+        padding_length = max_size - len(ids)
+        ids += [tokenizer.pad_token_id] * padding_length
+        return tokens, ids

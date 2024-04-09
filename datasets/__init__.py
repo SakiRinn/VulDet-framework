@@ -1,1 +1,1 @@
-from .text import TextDataset
+from .devign import DevignDataset

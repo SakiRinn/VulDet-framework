@@ -1,4 +1,6 @@
 import math
+from typing import List
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
@@ -14,10 +16,10 @@ att_op_dict = {
 
 class GatedGNN(nn.Module):
 
-    def __init__(self, feature_dim_size, hidden_size, num_GNN_layers, dropout=0.5, act=f.relu):
+    def __init__(self, feature_size, hidden_size, num_gnn_layers, dropout=0.5, act=f.relu):
         super(GatedGNN, self).__init__()
-        self.num_GNN_layers = num_GNN_layers
-        self.emb_encode = nn.Linear(feature_dim_size, hidden_size).to(torch.float64)
+        self.num_gnn_layers = num_gnn_layers
+        self.emb_encode = nn.Linear(feature_size, hidden_size).to(torch.float64)
         self.dropout_encode = nn.Dropout(dropout)
         self.z0 = nn.Linear(hidden_size, hidden_size).to(torch.float64)
         self.z1 = nn.Linear(hidden_size, hidden_size).to(torch.float64)
@@ -47,7 +49,7 @@ class GatedGNN(nn.Module):
         x = self.dropout_encode(x)
         x = self.emb_encode(x.to(torch.float64))
         x = x * mask
-        for idx_layer in range(self.num_GNN_layers):
+        for idx_layer in range(self.num_gnn_layers):
             x = self.gatedGNN(x.to(torch.float64), adj.to(torch.float64)) * mask.to(torch.float64)
         return x
 
@@ -56,12 +58,11 @@ class ResGatedGNN(GatedGNN):
 
     """GatedGNN with residual connection"""
 
-    def __init__(self, feature_dim_size, hidden_size, num_GNN_layers, dropout, act=f.relu,
-                 residual=True, att_op='mul', alpha_weight=1.0):
-        super(ResGatedGNN, self).__init__(feature_dim_size, hidden_size, num_GNN_layers, dropout, act)
+    def __init__(self, feature_size, hidden_size, num_gnn_layers, dropout,
+                 act=f.relu, residual=True, att_op='mul'):
+        super(ResGatedGNN, self).__init__(feature_size, hidden_size, num_gnn_layers, dropout, act)
         self.residual = residual
         self.att_op = att_op
-        self.alpha_weight = alpha_weight
         self.out_dim = hidden_size
         if self.att_op == att_op_dict['concat']:
             self.out_dim = hidden_size * 2
@@ -84,7 +85,7 @@ class ResGatedGNN(GatedGNN):
         x = self.dropout_encode(x)
         x = self.emb_encode(x.to(torch.float64))
         x = x * mask
-        for idx_layer in range(self.num_GNN_layers):
+        for idx_layer in range(self.num_gnn_layers):
             if self.residual:
                 # add residual connection, can use a weighted sum
                 x = x + self.gatedGNN(x.to(torch.float64), adj.to(torch.float64)) * mask.to(torch.float64)
@@ -137,25 +138,25 @@ class GraphConvolution(torch.nn.Module):
             output = output + self.bias
         return self.act(output)
 
+
 class ResGCN(nn.Module):
 
     """GCNs with residual connection"""
 
-    def __init__(self, feature_dim_size, hidden_size, num_GNN_layers, dropout, act=nn.functional.relu,
-                 residual=True, att_op="mul", alpha_weight=1.0):
+    def __init__(self, feature_size, hidden_size, num_gnn_layers, dropout,
+                 act=f.relu, residual=True, att_op="mul"):
         super(ResGCN, self).__init__()
-        self.num_GNN_layers = num_GNN_layers
+        self.num_gnn_layers = num_gnn_layers
         self.residual = residual
         self.att_op = att_op
-        self.alpha_weight = alpha_weight
         self.out_dim = hidden_size
         if self.att_op == att_op_dict['concat']:
             self.out_dim = hidden_size * 2
 
         self.gnnlayers = torch.nn.ModuleList()
-        for layer in range(self.num_GNN_layers):
+        for layer in range(self.num_gnn_layers):
             if layer == 0:
-                self.gnnlayers.append(GraphConvolution(feature_dim_size, hidden_size, dropout, act=act))
+                self.gnnlayers.append(GraphConvolution(feature_size, hidden_size, dropout, act=act))
             else:
                 self.gnnlayers.append(GraphConvolution(hidden_size, hidden_size, dropout, act=act))
         self.soft_att = nn.Linear(hidden_size, 1).to(torch.float64)
@@ -164,7 +165,7 @@ class ResGCN(nn.Module):
 
     def forward(self, inputs, adj, mask):
         x = inputs
-        for idx_layer in range(self.num_GNN_layers):
+        for idx_layer in range(self.num_gnn_layers):
             if idx_layer == 0:
                 x = self.gnnlayers[idx_layer](x, adj) * mask
             else:
@@ -185,127 +186,3 @@ class ResGCN(nn.Module):
             graph_embeddings = torch.sum(x, 1) * torch.amax(x, 1)
 
         return graph_embeddings
-
-
-def build_graph(shuffle_doc_words_list, word_embeddings, window_size=3):
-    # TODO
-    weighted_graph = False
-    print('using default unweighted graph')
-
-    # print('using window size = ', window_size)
-    x_adj = []
-    x_feature = []
-    y = []
-    doc_len_list = []
-    vocab_set = set()
-
-    for i in range(len(shuffle_doc_words_list)):
-        doc_words = shuffle_doc_words_list[i]
-        doc_len = len(doc_words)
-
-        doc_vocab = list(set(doc_words))
-        doc_nodes = len(doc_vocab)
-
-        doc_len_list.append(doc_nodes)
-        vocab_set.update(doc_vocab)
-
-        doc_word_id_map = {}
-        for j in range(doc_nodes):
-            doc_word_id_map[doc_vocab[j]] = j
-
-        # sliding windows
-        windows = []
-        if doc_len <= window_size:
-            windows.append(doc_words)
-        else:
-            for j in range(doc_len - window_size + 1):
-                window = doc_words[j: j + window_size]
-                windows.append(window)
-
-        word_pair_count = {}
-        for window in windows:
-            for p in range(1, len(window)):
-                for q in range(0, p):
-                    word_p_id = window[p]
-                    word_q_id = window[q]
-                    if word_p_id == word_q_id:
-                        continue
-                    word_pair_key = (word_p_id, word_q_id)
-                    # word co-occurrences as weights
-                    if word_pair_key in word_pair_count:
-                        word_pair_count[word_pair_key] += 1.
-                    else:
-                        word_pair_count[word_pair_key] = 1.
-                    # bi-direction
-                    word_pair_key = (word_q_id, word_p_id)
-                    if word_pair_key in word_pair_count:
-                        word_pair_count[word_pair_key] += 1.
-                    else:
-                        word_pair_count[word_pair_key] = 1.
-
-        row, col = [], []
-        weight, features = [], []
-
-        for key in word_pair_count:
-            p = key[0]
-            q = key[1]
-            row.append(doc_word_id_map[p])
-            col.append(doc_word_id_map[q])
-            weight.append(word_pair_count[key] if weighted_graph else 1.)
-        adj = sp.csr_matrix((weight, (row, col)), shape=(doc_nodes, doc_nodes))
-        x_adj.append(adj)
-
-        for k, v in sorted(doc_word_id_map.items(), key=lambda x: x[1]):
-            features.append(word_embeddings[k])
-        x_feature.append(features)
-
-    return x_adj, x_feature
-
-
-def build_graph_text(shuffle_doc_words_list, word_embeddings, window_size=3):
-    # TODO
-    weighted_graph = False
-    print('using default unweighted graph')
-
-    # print('using window size = ', window_size)
-    x_adj, x_feature = [], []
-    for i in range(len(shuffle_doc_words_list)):
-        doc_words = shuffle_doc_words_list[i]
-        doc_len = len(doc_words)
-
-        row, col = [], []
-        weight, features = [], []
-
-        if doc_len > window_size:
-            for j in range(doc_len - window_size + 1):
-                for p in range(j + 1, j + window_size):
-                    for q in range(j, p):
-                        row.append(p)
-                        col.append(q)
-                        weight.append(1.)
-                        #
-                        row.append(q)
-                        col.append(p)
-                        weight.append(1.)
-        else:  # doc_len < window_size
-            for p in range(1, doc_len):
-                for q in range(0, p):
-                    row.append(p)
-                    col.append(q)
-                    weight.append(1.)
-                    #
-                    row.append(q)
-                    col.append(p)
-                    weight.append(1.)
-
-        adj = sp.csr_matrix((weight, (row, col)), shape=(doc_len, doc_len))
-        if not weighted_graph:
-            adj[adj > 1] = 1.
-        x_adj.append(adj)
-        #
-        for word in doc_words:
-            feature = word_embeddings[word]
-            features.append(feature)
-        x_feature.append(features)
-
-    return x_adj, x_feature
