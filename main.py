@@ -1,5 +1,6 @@
 import argparse
 import inspect
+import logging
 import math
 
 from transformers import (BertConfig, BertForMaskedLM, BertTokenizer,
@@ -18,7 +19,7 @@ import yaml
 
 import datasets
 import models
-from runner import Runner
+from tools.runner import Runner
 
 TRANSFORMER_TYPES = {
     'gpt2': (GPT2LMHeadModel, GPT2Config, GPT2Tokenizer),
@@ -47,17 +48,17 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
     parser.add_argument("config", type=str, help="Path to the YAML file used to set hyperparameters.")
-    parser.add_argument("--output_dir", default="./outputs", type=str,
+    parser.add_argument("--output-dir", default="./outputs", type=str,
                         help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--weight_path", type=str,
+    parser.add_argument("--weight-path", type=str,
                         help="The weight file (.pt) saved during training. if train, it's used for resumption.")
-    parser.add_argument("--local_rank", type=int, default=-1,
+    parser.add_argument("--local-rank", type=int, default=-1,
                         help="For distributed training: local_rank.")
-    parser.add_argument("--no_cuda", action='store_true',
+    parser.add_argument("--no-cuda", action='store_true',
                         help="Avoid using CUDA when available.")
     parser.add_argument('--fp16', action='store_true',
                         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit.")
-    parser.add_argument("--no_eval_when_training", action='store_true',
+    parser.add_argument("--no-eval-when-training", action='store_true',
                         help="Only takes effect when training. Don't run evaluation when training.")
     return parser.parse_args()
 
@@ -121,11 +122,11 @@ def main():
     runner.set_device(args.no_cuda)
     runner.set_logger()
 
-    runner.logger.info('***** Basic information *****')
-    runner.logger.info(f"\tConfig: {args.config}")
-    runner.logger.info(f"\tModel: {args.model}, dataset: {args.dataset}, optimizer: {args.optimizer}")
-    runner.logger.info(f"\tTask: {args.task}, seed: {args.seed}")
-    runner.logger.info(f"\tDistributed training: {args.local_rank != -1}, fp16 training: {args.fp16}, "
+    logging.info('***** Basic information *****')
+    logging.info(f"\tConfig: {args.config}")
+    logging.info(f"\tModel: {args.model}, dataset: {args.dataset}, optimizer: {args.optimizer}")
+    logging.info(f"\tTask: {args.task}, seed: {args.seed}")
+    logging.info(f"\tDistributed training: {args.local_rank != -1}, fp16 training: {args.fp16}, "
                        f"device: {runner.device}, num GPUs: {runner.n_gpu}")
 
     # - Dataset
@@ -133,10 +134,10 @@ def main():
     # Input block size will be the max possible for the model.
     dataset_args['max_size'] = tokenizer.max_len_single_sentence if dataset_args['max_size'] <= 0 else \
         min(dataset_args['max_size'], tokenizer.max_len_single_sentence)
-    runner.logger.info("Start Loading dataset...")
+    logging.info("Start Loading dataset...")
     train_dataset = dataset_class(is_train=True, **dataset_args)
     eval_dataset = dataset_class(is_train=False, **dataset_args)
-    runner.logger.info("Loading completed.")
+    logging.info("Loading completed.")
 
     # - Optimizer & scheduler
     if 'scheduler' in optimizer_args.keys():
@@ -166,13 +167,13 @@ def main():
     if args.task == 'train':
         if args.weight_path:
             runner.load_weights(args.weight_path, optimizer, scheduler)
-            runner.logger.info(f"Resumed from {args.weight_path}.")
-        runner.logger.info("Start training...")
+            logging.info(f"Resumed from {args.weight_path}.")
+        logging.info("Start training...")
         if args.no_eval_when_training:
             runner.train(optimizer, train_dataset, scheduler)
         else:
             runner.train(optimizer, train_dataset, scheduler, eval_dataset)
-        runner.logger.info("Training completed.")
+        logging.info("Training completed.")
 
     # - Evaluate
     if args.task == 'eval' and args.local_rank in [-1, 0]:
@@ -180,13 +181,13 @@ def main():
             raise ValueError("When evaluating, `--weight_path` must be specified.")
         runner.load_weights(args.weight_path)
 
-        runner.logger.info("Start evaluation...")
+        logging.info("Start evaluation...")
         eval_result = runner.eval(eval_dataset)
-        runner.logger.info("Evaluation completed.")
+        logging.info("Evaluation completed.")
 
-        runner.logger.info("***** Evaluation results *****")
+        logging.info("***** Evaluation results *****")
         for key in sorted(eval_result.keys()):
-            runner.logger.info(f"  {key} = {round(eval_result[key], 4)}")
+            logging.info(f"  {key} = {round(eval_result[key], 4)}")
 
 
 if __name__ == "__main__":
