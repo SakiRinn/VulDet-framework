@@ -63,22 +63,15 @@ def get_args():
 
 
 def load_transformers(model_type: str, model_name: str,
-                      config_name='', tokenizer_name='', cache_dir='',
-                      do_lower_case=False):
+                      config_name='', tokenizer_name='', do_lower_case=False):
     model_class, config_class, tokenizer_class = TRANSFORMER_TYPES[model_type]      # TODO: KeyError
     config_name = model_name if not config_name else config_name
     tokenizer_name = model_name if not tokenizer_name else tokenizer_name
 
-    config = config_class.from_pretrained(config_name if config_name else model_name,
-                                          cache_dir=cache_dir if cache_dir else None)
+    config = config_class.from_pretrained(config_name if config_name else model_name)
     config.num_labels = 1
-    model = model_class.from_pretrained(model_name,
-                                        from_tf='.ckpt' in model_name,
-                                        cache_dir=cache_dir if cache_dir else None,
-                                        config=config)
-    tokenizer = tokenizer_class.from_pretrained(tokenizer_name,
-                                                cache_dir=cache_dir if cache_dir else None,
-                                                do_lower_case=do_lower_case)
+    model = model_class.from_pretrained(model_name, config=config, from_tf='.ckpt' in model_name)
+    tokenizer = tokenizer_class.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     return model, config, tokenizer
 
 

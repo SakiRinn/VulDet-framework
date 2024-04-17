@@ -1,1 +1,2 @@
-from .regvd import ReGVD, Devign
+from .regvd import ReGVD
+from .devign import DevignForSequence

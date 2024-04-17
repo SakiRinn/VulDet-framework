@@ -1,17 +1,51 @@
-import math
 from typing import List
 import numpy as np
+import scipy.sparse as sp
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
 from torch.nn.parameter import Parameter
-import scipy.sparse as sp
+
 
 att_op_dict = {
     'sum': 'sum',
     'mul': 'mul',
     'concat': 'concat'
 }
+
+def normalize_adj(adj: sp.csr_matrix):
+    """ Symmetrically normalize adjacency matrix. """
+    with np.errstate(divide='ignore'):
+        d_inv_sqrt = np.power(np.array(adj.sum(axis=1)), -0.5).flatten()
+        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+    d_inv_sqrt_diag = np.diag(d_inv_sqrt)
+    return adj.dot(d_inv_sqrt_diag).transpose().dot(d_inv_sqrt_diag)
+
+def preprocess_adjs(adjs: List[sp.csr_matrix]):
+    """ Preprocessing of adjacency matrix for simple GCN model and conversion to tuple representation. """
+    max_length = max([a.shape[0] for a in adjs])
+    mask = np.zeros((len(adjs), max_length, 1))         # mask for padding
+
+    for i, adj in enumerate(adjs):
+        adj_normalized = normalize_adj(adj)             # no self-loop
+        pad = max_length - adj_normalized.shape[0]      # padding for each epoch
+
+        adjs[i] = np.pad(adj_normalized, ((0, pad), (0, pad)), mode='constant')
+        mask[i, :adj.shape[0], :] = 1.
+    return np.array(adjs), mask
+
+def preprocess_features(features: List[np.ndarray]):
+    """ Row-normalize feature matrix and convert to tuple representation """
+    max_length = max([len(feature) for feature in features])
+
+    for i, feature in enumerate(features):
+        feature = np.array(feature)
+        pad = max_length - feature.shape[0]         # padding for each epoch
+
+        features[i] = np.pad(feature, ((0, pad), (0, 0)), mode='constant')
+    return np.array(features)
 
 
 class GatedGNN(nn.Module):
