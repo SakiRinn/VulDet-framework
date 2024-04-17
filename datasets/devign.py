@@ -1,4 +1,6 @@
 import json
+
+import pandas as pd
 from datasets.text import TextDataset, TextEntry
 
 
@@ -9,7 +11,7 @@ class DevignDataset(TextDataset):
         self.max_size = max_size
         super().__init__(file_path, is_train, validate_split)
 
-    def load_data(self, file_path):
+    def load(self, file_path):
         with open(file_path, 'r') as f:
             raw_data = json.load(f)
         return raw_data

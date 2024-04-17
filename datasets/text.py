@@ -1,4 +1,3 @@
-from abc import abstractmethod
 import torch
 
 from datasets.base import BaseDataset, DataEntry
@@ -6,8 +5,8 @@ from datasets.base import BaseDataset, DataEntry
 
 class TextEntry(DataEntry):
 
-    def __init__(self, idx, tokens, ids, label=None):
-        super().__init__(idx, label)
+    def __init__(self, index, tokens, ids, label=None):
+        super().__init__(index, label)
         self.tokens = tokens
         self.ids = ids
 
@@ -21,13 +20,14 @@ class TextEntry(DataEntry):
 class TextDataset(BaseDataset):
 
     def __getitem__(self, idx):
-        return torch.tensor(self.data[idx].ids), torch.tensor(self.data[idx].label)
+        return torch.tensor(self.data[idx].ids), \
+               torch.tensor(self.data[idx].label)
 
     @staticmethod
     def text_tokenize(text, tokenizer, max_size=256):
         tokens = tokenizer.tokenize(text)[:max_size - 2]
         tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
         ids = tokenizer.convert_tokens_to_ids(tokens)
-        padding_length = max_size - len(ids)
-        ids += [tokenizer.pad_token_id] * padding_length
+        pad_len = max_size - len(ids)
+        ids += [tokenizer.pad_token_id] * pad_len
         return tokens, ids
