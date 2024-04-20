@@ -196,7 +196,7 @@ class Runner:
         logits = np.concatenate(logits, 0)
         labels = np.concatenate(labels, 0)
 
-        results = tools.Metrics(logits, labels)()
+        results = tools.Metric(logits, labels)()
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 

@@ -9,7 +9,7 @@ import time
 import pandas as pd
 
 # Require joern v0.2.5
-JOERN_DIR = '/home/sakirinn/Code/Python/AMPLE/parse/joern'
+JOERN_DIR = './joern/'
 TIMEOUT = 3600
 
 

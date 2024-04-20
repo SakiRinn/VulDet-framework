@@ -2,7 +2,7 @@ import numpy as np
 import sklearn.metrics as metrics
 
 
-class Metrics:
+class Metric:
     def __init__(self, scores: np.ndarray, labels: np.ndarray):
         self.scores = scores.squeeze()
         self.labels = labels.squeeze()

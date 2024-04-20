@@ -19,7 +19,7 @@ import yaml
 
 import datasets
 import models
-from tools.runner import Runner
+from tools import Runner
 
 TRANSFORMER_TYPES = {
     'gpt2': (GPT2LMHeadModel, GPT2Config, GPT2Tokenizer),
