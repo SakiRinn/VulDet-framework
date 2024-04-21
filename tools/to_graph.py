@@ -9,7 +9,9 @@ import time
 import pandas as pd
 
 # Require joern v0.2.5
-JOERN_DIR = './joern/'
+SCRIPT_DIR = osp.dirname(osp.realpath(__file__))
+PROJECT_DIR = osp.join(SCRIPT_DIR, '..')
+JOERN_DIR = osp.join(PROJECT_DIR, 'joern')
 TIMEOUT = 3600
 
 
@@ -56,4 +58,4 @@ def df2graph(dataframe, output_dir):
 
 if __name__ == '__main__':
     raw = pd.read_json('data/devign/devign.json')
-    df2graph(raw, 'data/graph_data')
+    df2graph(raw, 'outputs/graph_data')
