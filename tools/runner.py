@@ -78,12 +78,10 @@ class Runner:
 
         avg_loss, best_f1 = 0., 0.
         # - Epoch loop
-        for epoch in tqdm(range(self.cur_epoch, self.epochs + 1)):
+        for epoch in tqdm(range(self.cur_epoch, self.epochs)):
             # For resume, retrain for an entire epoch.
             if self.cur_step % len(dataloader) != 0:
                 self.cur_step -= self.cur_step % len(dataloader)
-            else:
-                self.cur_epoch += 1
 
             # Prepare model
             self.model.train()
@@ -91,8 +89,7 @@ class Runner:
 
             total_loss = 0.
             # - Step loop
-            for step, batch in enumerate(dataloader, start=1):
-                self.cur_step += 1
+            for step, batch in enumerate(dataloader):
 
                 # Predict
                 inputs = batch[0].to(self.device)
@@ -123,12 +120,15 @@ class Runner:
                 avg_loss = total_loss / step
                 if self.local_rank in [-1, 0]:
                     if self.log_per_steps > 0 and self.cur_step % self.log_per_steps == 0:
-                        logging.info(f"[epoch {epoch}/step {step}] cur_loss: {round(loss.item(), 4)}, "
-                                         f"avg_loss: {round(avg_loss, 4)}")
+                        logging.info(f"[epoch {epoch + 1}/step {step + 1}] cur_loss: {round(loss.item(), 4)}, "
+                                     f"avg_loss: {round(avg_loss, 4)}")
                     if self.cur_step % self.save_per_steps == 0:
-                        self.save_weights(f'{self.model.__class__.__name__}_e{epoch}s{step}',
+                        self.save_weights(f'{self.model.__class__.__name__}_e{epoch + 1}s{step}',
                                           optimizer, scheduler)
-            logging.info(f"[epoch {epoch}] Completed. avg_loss: {round(avg_loss, 4)}")
+                self.cur_step += 1
+
+            logging.info(f"[epoch {epoch + 1}] Completed. avg_loss: {round(avg_loss, 4)}")
+            self.cur_epoch += 1
 
             # Evaluate
             # NOTE: Only evaluate when single GPU, otherwise metrics may not average well.
