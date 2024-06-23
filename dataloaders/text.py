@@ -1,6 +1,6 @@
 import torch
 
-from datasets.base import BaseDataset, DataEntry
+from dataloaders.base import BaseDataset, DataEntry
 
 
 class TextEntry(DataEntry):

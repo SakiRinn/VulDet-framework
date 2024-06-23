@@ -4,7 +4,7 @@ import torch.nn.utils
 from torch.autograd import Variable
 
 from typing import List
-from datasets.core.ggnn_dataset import AdjacencyList
+from dataloaders.core.ggnn_dataset import AdjacencyList
 
 
 class GatedGNN(nn.Module):

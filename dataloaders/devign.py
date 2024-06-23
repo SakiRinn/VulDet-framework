@@ -1,7 +1,7 @@
 import json
 
 import pandas as pd
-from datasets.text import TextDataset, TextEntry
+from dataloaders.text import TextDataset, TextEntry
 
 
 class DevignDataset(TextDataset):

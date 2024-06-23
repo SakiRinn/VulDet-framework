@@ -200,7 +200,8 @@ class Runner:
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 
-    def set_seed(self, seed):
+    @staticmethod
+    def set_seed(seed):
         random.seed(seed)
         os.environ['PYHTONHASHSEED'] = str(seed)
         np.random.seed(seed)

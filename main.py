@@ -3,39 +3,13 @@ import inspect
 import logging
 import math
 
-from transformers import (BertConfig, BertForMaskedLM, BertTokenizer,
-                          GPT2Config, GPT2LMHeadModel, GPT2Tokenizer,
-                          OpenAIGPTConfig, OpenAIGPTLMHeadModel, OpenAIGPTTokenizer,
-                          RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer,
-                          DistilBertConfig, DistilBertForMaskedLM, DistilBertTokenizer)
-from transformers import (get_linear_schedule_with_warmup,
-                          get_cosine_schedule_with_warmup,
-                          get_polynomial_decay_schedule_with_warmup,
-                          get_constant_schedule,
-                          get_inverse_sqrt_schedule)
-
 import torch
 import yaml
 
-import datasets
+import dataloaders
 import models
 from tools import Runner
-
-TRANSFORMER_TYPES = {
-    'gpt2': (GPT2LMHeadModel, GPT2Config, GPT2Tokenizer),
-    'openai-gpt': (OpenAIGPTLMHeadModel, OpenAIGPTConfig, OpenAIGPTTokenizer),
-    'bert': (BertForMaskedLM, BertConfig, BertTokenizer),
-    'roberta': (RobertaForSequenceClassification, RobertaConfig, RobertaTokenizer),
-    'distilbert': (DistilBertForMaskedLM, DistilBertConfig, DistilBertTokenizer)
-}
-
-SCHEDULER_TYPES = {
-    'linear': get_linear_schedule_with_warmup,
-    'cosine': get_cosine_schedule_with_warmup,
-    'polymonial': get_polynomial_decay_schedule_with_warmup,
-    'constant': get_constant_schedule,
-    'inverse_sqrt': get_inverse_sqrt_schedule,
-}
+from tools.huggingface import SCHEDULER_TYPES, load_models
 
 
 def get_classes(module):
@@ -63,19 +37,6 @@ def get_args():
     return parser.parse_args()
 
 
-def load_transformers(model_type: str, model_name: str,
-                      config_name='', tokenizer_name='', do_lower_case=False):
-    model_class, config_class, tokenizer_class = TRANSFORMER_TYPES[model_type]      # TODO: KeyError
-    config_name = model_name if not config_name else config_name
-    tokenizer_name = model_name if not tokenizer_name else tokenizer_name
-
-    config = config_class.from_pretrained(config_name if config_name else model_name)
-    config.num_labels = 1
-    model = model_class.from_pretrained(model_name, config=config, from_tf='.ckpt' in model_name)
-    tokenizer = tokenizer_class.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
-    return model, config, tokenizer
-
-
 def main():
     args = get_args()
 
@@ -98,7 +59,7 @@ def main():
     except KeyError:
         raise KeyError(f"Unsupported model class: {args.model}!")
     try:
-        dataset_class = get_classes(datasets)[args.dataset]
+        dataset_class = get_classes(dataloaders)[args.dataset]
     except KeyError:
         raise KeyError(f"Unsupported dataset class: {args.dataset}!")
     try:
@@ -108,7 +69,7 @@ def main():
 
     # - Model
     if 'transformer' in model_args.keys():
-        base_model, config, tokenizer = load_transformers(**model_args['transformer'])
+        config, base_model, tokenizer = load_models(**model_args['transformer'])
         del model_args['transformer']
     model = model_class(base_model, config, tokenizer, **model_args)
     # Make sure only the first process in distributed training download model & vocab

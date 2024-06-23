@@ -238,7 +238,7 @@ def df2csv(dataframe, output_dir, code_tag='func'):
 
 
 def csv2graph(node_csv, edge_csv, w2v_model, embed_dim=128,
-              node_types_to_ids=NODE_TYPES_TO_IDS, edge_types_to_ids=EDGE_TYPES_TO_IDS, ):
+              node_types_to_ids=NODE_TYPES_TO_IDS, edge_types_to_ids=EDGE_TYPES_TO_IDS):
 
     with open(node_csv, 'r') as nc:
         nodes = csv.DictReader(nc, delimiter='\t')

@@ -7,7 +7,7 @@ from gensim.models import Word2Vec
 import numpy as np
 import pandas as pd
 
-from tools import df2csv, csv2graph
+from tools.graph import df2csv, csv2graph
 
 
 def generate_graphs(csv_dir, raw_data, w2v_model):
