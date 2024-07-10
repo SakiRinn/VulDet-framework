@@ -203,7 +203,7 @@ class Runner:
         logging.info(f"  Batch size = {self.eval_batch_size}")
 
         eval_step, total_loss = 0, 0.
-        scores, labels = [], []
+        probs, labels = [], []
 
         with torch.no_grad():
             for batch in eval_dataloader:
@@ -219,16 +219,16 @@ class Runner:
 
                 eval_step += 1
                 total_loss += loss.mean().item()
-                prob = F.softmax(logits.mean(dim=1))
+                prob = F.softmax(logits)
 
-                scores.append(prob.cpu().numpy())
+                probs.append(prob.cpu().numpy())
                 labels.append(label.cpu().numpy())
 
         # Aggregate
-        scores = np.concatenate(scores, 0)
+        probs = np.concatenate(probs, 0)
         labels = np.concatenate(labels, 0)
 
-        results = utils.Metric(scores, labels)()
+        results = utils.Metric(probs, labels)()
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 
