@@ -1,4 +1,3 @@
-from typing import List
 import numpy as np
 import scipy.sparse as sp
 import math
@@ -23,7 +22,7 @@ def normalize_adj(adj: sp.csr_matrix):
     d_inv_sqrt_diag = np.diag(d_inv_sqrt)
     return adj.dot(d_inv_sqrt_diag).transpose().dot(d_inv_sqrt_diag)
 
-def preprocess_adjs(adjs: List[sp.csr_matrix]):
+def preprocess_adjs(adjs: 'list[sp.csr_matrix]'):
     """ Preprocessing of adjacency matrix for simple GCN model and conversion to tuple representation. """
     max_length = max([a.shape[0] for a in adjs])
     mask = np.zeros((len(adjs), max_length, 1))         # mask for padding
@@ -36,7 +35,7 @@ def preprocess_adjs(adjs: List[sp.csr_matrix]):
         mask[i, :adj.shape[0], :] = 1.
     return np.array(adjs), mask
 
-def preprocess_features(features: List[np.ndarray]):
+def preprocess_features(features: 'list[np.ndarray]'):
     """ Row-normalize feature matrix and convert to tuple representation """
     max_length = max([len(feature) for feature in features])
 

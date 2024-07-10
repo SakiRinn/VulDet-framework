@@ -150,10 +150,18 @@ def remove_commit(code):
     code = re.sub(pattern, '', code)
     return code
 
-
 def to_camelcase(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
+def pretrained_tokenize(tokenizer, text, max_size=512):
+    tokens = tokenizer.tokenize(text)[:max_size - 2]
+    tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
+    ids = tokenizer.convert_tokens_to_ids(tokens)
+    pad_len = max_size - len(ids)
+    ids += [tokenizer.pad_token_id] * pad_len
+    return tokens, ids
 
 
 def code_tokenize(code):

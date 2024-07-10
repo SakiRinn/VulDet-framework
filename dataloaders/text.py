@@ -1,33 +1,77 @@
+import os.path as osp
+import json
+import h5py
+import numpy as np
 import torch
+from functools import partial
 
 from dataloaders.base import BaseDataset, DataEntry
 
 
+def hdf5_to_dict(group):
+    def dataset_to_dict(dataset):
+        data = dataset[()]
+        if isinstance(data, np.ndarray):
+            data = data.tolist()
+        return data
+
+    result = {}
+    for k, v in group.items():
+        if isinstance(v, h5py.Dataset):
+            result[k] = dataset_to_dict(v)
+        elif isinstance(v, h5py.Group):
+            result[k] = hdf5_to_dict(v)
+    for k, v in group.attrs.items():
+        if isinstance(v, np.ndarray):
+            v = v.tolist()
+        result[k] = v
+    return result
+
+
 class TextEntry(DataEntry):
 
-    def __init__(self, index, tokens, ids, label=None):
+    def __init__(self, index, text, label: 'int | None' = None):
         super().__init__(index, label)
-        self.tokens = tokens
-        self.ids = ids
-
-    def __str__(self):
-        string = super().__str__()
-        string += "input_tokens: {}\n".format([x.replace('\u0120', '_') for x in self.tokens])
-        string += "input_ids: {}\n".format(' '.join(map(str, self.ids)))
-        return string
+        self.text = text
 
 
 class TextDataset(BaseDataset):
 
+    def __init__(self, file_path, is_train=False, validate_split=1.,
+                 file_type=None, code_tag='func', label_tag='target'):
+        file_path = osp.realpath(file_path)
+        if file_type is None:
+            file_type = file_path.split("/")[-1].split(".")[1]
+        self.load = partial(getattr(self, 'load_' + file_type),
+                            code_tag=code_tag, label_tag=label_tag)
+        super().__init__(file_path, is_train, validate_split)
+
     def __getitem__(self, idx):
-        return torch.tensor(self.data[idx].ids), \
-               torch.tensor(self.data[idx].label)
+        return self.data[idx].text, torch.tensor(self.data[idx].label)
 
     @staticmethod
-    def text_tokenize(text, tokenizer, max_size=256):
-        tokens = tokenizer.tokenize(text)[:max_size - 2]
-        tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
-        ids = tokenizer.convert_tokens_to_ids(tokens)
-        pad_len = max_size - len(ids)
-        ids += [tokenizer.pad_token_id] * pad_len
-        return tokens, ids
+    def load_json(file_path, code_tag='code', label_tag='label'):
+        # Read
+        with open(file_path, 'r') as f:
+            raw_data = json.load(f)
+        # Preprocess
+        data = []
+        for i, e in enumerate(raw_data):
+            # code = ' '.join(e[code_tag].split())
+            code = e[code_tag]
+            label = e[label_tag]
+            entry = TextEntry(i, code, label)
+            data.append(entry)
+        return data
+
+    @staticmethod
+    def load_hdf5(file_path, code_tag='code', label_tag='label'):
+        # Read
+        with h5py.File(file_path, 'r') as f:
+            raw_data = hdf5_to_dict(f)
+        # Preprocess
+        data = []
+        codes, labels = raw_data[code_tag], labels[label_tag]
+        for i, (code, label) in enumerate(zip(codes, labels)):
+            entry = TextEntry(i, code, label)
+            data.append(entry)

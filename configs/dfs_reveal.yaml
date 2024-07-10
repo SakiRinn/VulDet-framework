@@ -1,0 +1,37 @@
+class:
+    dataset: 'TextDataset'
+    model: 'DevignForSequence'
+    optimizer: 'AdamW'
+dataset:
+    file_path: 'data/reveal/random.json'
+    file_type: 'json'
+    code_tag: 'code'
+    label_tag: 'label'
+    validate_split: 0.2
+model:
+    transformer:
+        model_name: 'microsoft/codebert-base'
+        config_name: ''
+        tokenizer_name: ''
+        do_lower_case: False
+    window_size: 5
+    hidden_size: 256
+    feature_size: 768
+    num_classes: 2
+    num_gnn_layers: 2
+optimizer:
+    scheduler:
+        type: 'linear'
+        num_warmup_steps: -1
+    lr: 0.0005
+    weight_decay: 0.0
+    eps: 0.00000001
+train:
+    batch_size: 128
+    epochs: 30
+    save_per_steps: -1
+    log_per_steps: -1
+    max_grad_norm: 1.0
+eval:
+    batch_size: 128
+seed: 42

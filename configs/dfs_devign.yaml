@@ -1,14 +1,15 @@
 class:
+    dataset: 'TextDataset'
     model: 'DevignForSequence'
-    dataset: 'DevignDataset'
     optimizer: 'AdamW'
 dataset:
     file_path: 'data/devign/devign.json'
+    file_type: 'json'
+    code_tag: 'func'
+    label_tag: 'target'
     validate_split: 0.2
-    max_size: 400
 model:
     transformer:
-        model_type: 'roberta'
         model_name: 'microsoft/codebert-base'
         config_name: ''
         tokenizer_name: ''
@@ -32,5 +33,5 @@ train:
     log_per_steps: -1
     max_grad_norm: 1.0
 eval:
-    batch_size: 32
-seed: 123456
+    batch_size: 128
+seed: 42

@@ -4,21 +4,35 @@ import os
 import random
 import numpy as np
 from tqdm import tqdm
+import inspect
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
+from torch.utils.data import DataLoader, Dataset, SequentialSampler, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+import torch.nn.functional as F
+
+from transformers.modeling_outputs import ModelOutput
 
 import tools
 
 
+def get_param_names(func):
+    signature = inspect.signature(func)
+    params = signature.parameters
+    return [p for p in params if p not in ['args', 'kwargs']]
+
+
 class Runner:
 
-    def __init__(self, model, train_args={}, eval_args={}, output_dir='./outputs'):
+    def __init__(self, model, tokenizer,
+                 train_args={}, eval_args={}, output_dir='./outputs'):
         self.model = model
+        self.tokenizer = tokenizer
         self.output_dir = output_dir
+
         self.cur_epoch, self.cur_step = 0, 0
+        self.local_rank = -1
 
         for k, v in train_args.items():
             setattr(self, k, v)
@@ -29,6 +43,9 @@ class Runner:
         self.output_dir = os.path.join(self.output_dir, date)
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+
+        self.set_device(False)
+        self.set_logger()
 
     def train(self, optimizer, dataset, scheduler=None, eval_dataset=None):
 
@@ -88,13 +105,19 @@ class Runner:
             self.model.zero_grad()
 
             total_loss = 0.
+
             # - Step loop
             for step, batch in enumerate(dataloader):
-
                 # Predict
-                inputs = batch[0].to(self.device)
-                labels = batch[1].to(self.device)
-                loss, logits = self.model(inputs, labels)
+                code, label = batch
+                inputs = self.tokenizer(code, return_tensors='pt',
+                                        truncation=True, padding=True)
+                inputs = {k: v.to(self.device) for k, v in inputs.items()
+                          if k in get_param_names(self.model.forward)}
+                inputs.update({'labels': label.to(self.device)})
+                outputs = self.model(**inputs)
+                loss, logits = outputs.to_tuple()[:2] \
+                    if isinstance(outputs, ModelOutput) else outputs[:2]
 
                 # Parallel training (optional)
                 if self.n_gpu > 1:
@@ -117,7 +140,7 @@ class Runner:
 
                 # Statistic
                 total_loss += loss.item()
-                avg_loss = total_loss / step
+                avg_loss = total_loss / (step + 1)
                 if self.local_rank in [-1, 0]:
                     if self.log_per_steps > 0 and self.cur_step % self.log_per_steps == 0:
                         logging.info(f"[epoch {epoch + 1}/step {step + 1}] cur_loss: {round(loss.item(), 4)}, "
@@ -157,7 +180,8 @@ class Runner:
 
         # Prepare dataset
         # NOTE: DistributedSampler samples randomly
-        eval_sampler = SequentialSampler(dataset) if self.local_rank == -1 else DistributedSampler(dataset)
+        eval_sampler = SequentialSampler(dataset) if self.local_rank == -1 else \
+            DistributedSampler(dataset)
         eval_dataloader = DataLoader(
             dataset,
             sampler=eval_sampler,
@@ -179,26 +203,45 @@ class Runner:
         logging.info(f"  Batch size = {self.eval_batch_size}")
 
         eval_step, total_loss = 0, 0.
-        logits, labels = [], []
+        scores, labels = [], []
+
         with torch.no_grad():
             for batch in eval_dataloader:
-                inputs = batch[0].to(self.device)
-                label = batch[1].to(self.device)
-                loss, logit = self.model(inputs, label)
+                code, label = batch
+                inputs = self.tokenizer(code, return_tensors="pt",
+                                        padding=True, truncation=True)
+                inputs = {k: v.to(self.device) for k, v in inputs.items()
+                          if k in get_param_names(self.model.forward)}
+                inputs.update({'labels': label.to(self.device)})
+                outputs = self.model(**inputs)
+                loss, logits = outputs.to_tuple()[:2] \
+                    if isinstance(outputs, ModelOutput) else outputs[:2]
 
                 eval_step += 1
                 total_loss += loss.mean().item()
+                prob = F.softmax(logits.mean(dim=1))
 
-                logits.append(logit.cpu().numpy())
+                scores.append(prob.cpu().numpy())
                 labels.append(label.cpu().numpy())
 
         # Aggregate
-        logits = np.concatenate(logits, 0)
+        scores = np.concatenate(scores, 0)
         labels = np.concatenate(labels, 0)
 
-        results = tools.Metric(logits, labels)()
+        results = tools.Metric(scores, labels)()
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
+
+    def inference(self, sample):
+        code = ' '.join(sample.split())
+        inputs = self.tokenizer(code, return_tensors="pt").to(self.device)
+        inputs = {k: v for k, v in inputs.items()
+                  if k in get_param_names(self.model.forward)}
+        outputs = self.model(**inputs)
+        loss, logits = outputs.to_tuple()[:2] \
+            if isinstance(outputs, ModelOutput) else outputs[:2]
+        prob = F.softmax(logits.mean(dim=1))
+        return prob
 
     @staticmethod
     def set_seed(seed):

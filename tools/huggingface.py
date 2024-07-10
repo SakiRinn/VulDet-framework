@@ -7,7 +7,7 @@ from transformers import (get_linear_schedule_with_warmup,
                           get_inverse_sqrt_schedule)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers import BitsAndBytesConfig
-from peft import prepare_model_for_kbit_training
+# from peft import prepare_model_for_kbit_training
 
 
 SCHEDULER_TYPES = {
@@ -63,10 +63,10 @@ def load_models(model_name: str, config_name='', tokenizer_name='',
         quantization_config=get_quantization_config(int_bits),
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         from_tf='.ckpt' in model_name,
-        device_map="auto"
+        # device_map="auto"
     )
-    if int_bits != -1:
-        model = prepare_model_for_kbit_training(model)
+    # if int_bits != -1:
+    #     model = prepare_model_for_kbit_training(model)
 
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name,

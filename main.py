@@ -1,9 +1,11 @@
 import argparse
+from functools import partial
 import inspect
 import logging
 import math
 
 import torch
+from transformers.tokenization_utils import PreTrainedTokenizer
 import yaml
 
 import dataloaders
@@ -42,14 +44,13 @@ def main():
 
     with open(args.config, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+    args.dataset, args.model, args.optimizer = \
+        config['class']['dataset'], config['class']['model'], config['class']['optimizer']
     dataset_args = config['dataset']
     model_args = config['model']
     optimizer_args = config['optimizer']
     train_args = config['train']
     eval_args = config['eval']
-    args.dataset = config['class']['dataset']
-    args.model = config['class']['model']
-    args.optimizer = config['class']['optimizer']
     args.seed = config['seed']
     del config
 
@@ -69,32 +70,30 @@ def main():
 
     # - Model
     if 'transformer' in model_args.keys():
-        config, base_model, tokenizer = load_models(**model_args['transformer'])
+        config, transformer, tokenizer = load_models(**model_args['transformer'])
         del model_args['transformer']
-    model = model_class(base_model, config, tokenizer, **model_args)
+        model = model_class(transformer, config, tokenizer, **model_args)
+    else:
+        model = model_class(config, tokenizer, **model_args)
+        tokenizer = dataset_class.get_tokenizer()
     # Make sure only the first process in distributed training download model & vocab
     if args.local_rank == 0:
         torch.distributed.barrier()
 
     # - Runner
     train_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
-    runner = Runner(model, train_args, eval_args, args.output_dir)
+    runner = Runner(model, tokenizer, train_args, eval_args, args.output_dir)
     runner.set_seed(args.seed)
     runner.set_device(args.no_cuda)
-    runner.set_logger()
 
     logging.info('***** Basic information *****')
     logging.info(f"\tConfig: {args.config}")
     logging.info(f"\tModel: {args.model}, dataset: {args.dataset}, optimizer: {args.optimizer}")
     logging.info(f"\tTask: {args.task}, seed: {args.seed}")
     logging.info(f"\tDistributed training: {args.local_rank != -1}, fp16 training: {args.fp16}, "
-                       f"device: {runner.device}, num GPUs: {runner.n_gpu}")
+                 f"device: {runner.device}, num GPUs: {runner.n_gpu}")
 
     # - Dataset
-    dataset_args['tokenizer'] = tokenizer
-    # Input block size will be the max possible for the model.
-    dataset_args['max_size'] = tokenizer.max_len_single_sentence if dataset_args['max_size'] <= 0 else \
-        min(dataset_args['max_size'], tokenizer.max_len_single_sentence)
     logging.info("Start Loading dataset...")
     train_dataset = dataset_class(is_train=True, **dataset_args)
     eval_dataset = dataset_class(is_train=False, **dataset_args)
