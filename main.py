@@ -10,8 +10,8 @@ import yaml
 
 import dataloaders
 import models
-from tools import Runner
-from tools.huggingface import SCHEDULER_TYPES, load_models
+from utils import Runner
+from utils.huggingface import SCHEDULER_TYPES, load_models
 
 
 def get_classes(module):

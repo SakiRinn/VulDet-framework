@@ -1,8 +1,8 @@
 from datasets import load_dataset
 from peft.tuners.lora import LoraConfig
 from finetune.codellama import to_prompt, setup_peft_model, setup_peft_trainer
-from tools.huggingface import load_models
-from tools.runner import Runner
+from utils.huggingface import load_models
+from utils.runner import Runner
 
 
 def main():

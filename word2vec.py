@@ -5,8 +5,6 @@ import os
 import os.path as osp
 from gensim.models import Word2Vec
 
-from tools import code_tokenize
-
 
 def train_w2v(sentences, epochs=5, min_count=1, embedding_size=128,
               output_dir='outputs/w2v/'):

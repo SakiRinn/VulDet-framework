@@ -10,7 +10,6 @@ import time
 import numpy as np
 import pandas as pd
 
-from tools import code_tokenize
 
 # Require joern v0.2.5
 

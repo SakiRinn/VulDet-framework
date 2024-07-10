@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from transformers.modeling_outputs import ModelOutput
 
-import tools
+import utils
 
 
 def get_param_names(func):
@@ -228,7 +228,7 @@ class Runner:
         scores = np.concatenate(scores, 0)
         labels = np.concatenate(labels, 0)
 
-        results = tools.Metric(scores, labels)()
+        results = utils.Metric(scores, labels)()
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 

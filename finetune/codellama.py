@@ -7,7 +7,7 @@ from peft import (
     get_peft_model_state_dict,
     prepare_model_for_kbit_training
 )
-from tools.huggingface import load_models, load_datasets
+from utils.huggingface import load_models, load_datasets
 from transformers import TrainingArguments, DataCollatorForSeq2Seq, Trainer
 from trl import SFTTrainer
 
