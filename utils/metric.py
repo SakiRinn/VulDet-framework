@@ -9,7 +9,7 @@ class Metric:
 
         if probs.ndim > 2:
             self.probs = probs.squeeze()
-        self.preds = (self.probs.argmax(dim=1)).astype(np.float32)
+        self.preds = (self.probs.argmax(axis=1)).astype(np.float32)
 
     def __str__(self):
         confusion = metrics.confusion_matrix(y_true=self.labels, y_pred=self.preds)
