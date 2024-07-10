@@ -252,7 +252,7 @@ class Runner:
         torch.cuda.manual_seed(seed)
         torch.backends.cudnn.deterministic = True
 
-    def set_logger(self):
+    def set_logger(self, filename='runner.log'):
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
                                       datefmt='%m/%d/%Y %H:%M:%S')
         # To stderr
@@ -260,7 +260,7 @@ class Runner:
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         # To file
-        file_handler = logging.FileHandler(os.path.join(self.output_dir, 'runner.log'))
+        file_handler = logging.FileHandler(os.path.join(self.output_dir, filename))
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         # logger
@@ -282,7 +282,10 @@ class Runner:
 
         self.per_gpu_batch_size = self.batch_size // max(self.n_gpu, 1)
         self.per_gpu_eval_batch_size = self.eval_batch_size // max(self.n_gpu, 1)
-        self.model = self.model.to(self.device)
+        try:
+            self.model = self.model.to(self.device)
+        except ValueError:
+            pass
 
     def save_weights(self, filename, optimizer=None, scheduler=None):
         weights = {

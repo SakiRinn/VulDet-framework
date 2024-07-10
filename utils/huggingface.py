@@ -7,7 +7,7 @@ from transformers import (get_linear_schedule_with_warmup,
                           get_inverse_sqrt_schedule)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers import BitsAndBytesConfig
-# from peft import prepare_model_for_kbit_training
+from peft import prepare_model_for_kbit_training
 
 
 SCHEDULER_TYPES = {
@@ -48,25 +48,25 @@ def load_datasets(dataset_name, validate_split=0.1):
     return train_dataset, eval_dataset
 
 
-def load_models(model_name: str, config_name='', tokenizer_name='',
+def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
                 do_lower_case=False, int_bits=-1):
-    config_name = model_name if not config_name else config_name
-    tokenizer_name = model_name if not tokenizer_name else tokenizer_name
+    config_name = model_name_or_path if not config_name else config_name
+    tokenizer_name = model_name_or_path if not tokenizer_name else tokenizer_name
 
-    config = AutoConfig.from_pretrained(config_name if config_name else model_name)
-    config.num_labels = 1
+    config = AutoConfig.from_pretrained(config_name if config_name else model_name_or_path)
+    config.num_labels = 1       # binary classification
     config.use_cache = False
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
+        model_name_or_path,
         config=config,
         quantization_config=get_quantization_config(int_bits),
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-        from_tf='.ckpt' in model_name,
-        # device_map="auto"
+        from_tf='.ckpt' in model_name_or_path,
+        device_map="auto"
     )
-    # if int_bits != -1:
-    #     model = prepare_model_for_kbit_training(model)
+    if int_bits != -1:
+        model = prepare_model_for_kbit_training(model)
 
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name,
@@ -74,18 +74,10 @@ def load_models(model_name: str, config_name='', tokenizer_name='',
     )
     tokenizer.add_eos_token = True
     tokenizer.padding_side = "left"
-    # tokenizer.pad_token_id = PAD_TOKEN_ID
-    # tokenizer.pad_token = tokenizer.convert_ids_to_tokens(PAD_TOKEN_ID)
     tokenizer.pad_token_id = 0
-
-    special_tokens_dict = dict()
-    if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
-    if tokenizer.eos_token is None:
-        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
-    if tokenizer.bos_token is None:
-        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
-    if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
+    # THIS IS A HACK TO GET THE PAD TOKEN ID NOT TO BE EOS (LLaMa: 18610)
+    # if pad_token_id is not None:
+    #     tokenizer.pad_token_id = pad_token_id
+    #     tokenizer.pad_token = tokenizer.convert_ids_to_tokens(pad_token_id)
 
     return config, model, tokenizer

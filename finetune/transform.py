@@ -15,7 +15,8 @@ Your answer can only be 1 or 0, where 1 means there are some vulnerabilities in 
             sample = {
                 'instruction': instruction,
                 'input': d['func'],
-                'output': str(d['target'])
+                'output': str(d['target']),
+                # 'label': d['target']
             }
             data.append(sample)
         with open('data/train.json', 'w') as ff:
