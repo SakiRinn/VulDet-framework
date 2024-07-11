@@ -4,12 +4,15 @@ import sklearn.metrics as metrics
 
 class Metric:
     def __init__(self, probs: 'np.ndarray', labels: 'np.ndarray'):
-        self.probs = probs.squeeze()
-        self.labels = labels.squeeze()
+        self.probs = probs.astype(np.float32)
+        self.labels = labels.astype(np.float32)
 
-        if probs.ndim > 2:
-            self.probs = probs.squeeze()
-        self.preds = (self.probs.argmax(axis=1)).astype(np.float32)
+        if probs.ndim == 1:
+            self.preds = probs
+        elif probs.ndim == 2:
+            self.preds = self.probs.argmax(axis=1)
+        else:
+            raise RuntimeError
 
     def __str__(self):
         confusion = metrics.confusion_matrix(y_true=self.labels, y_pred=self.preds)

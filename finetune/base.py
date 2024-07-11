@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import logging
 import os
@@ -17,8 +18,8 @@ from utils.huggingface import load_models, load_datasets
 from transformers import TrainingArguments, DataCollatorForSeq2Seq, Trainer
 from trl import SFTTrainer
 
-from tools.huggingface import load_models
-from tools.metric import Metric
+from utils.huggingface import load_models
+from utils.metric import Metric
 
 
 def resize_tokenizer_and_embedding(model, tokenizer,
@@ -70,16 +71,14 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
     return list(linear_names)
 
 
-def to_prompt(sample):
-    prompt = f"""
-    ### Instruction:
-        {sample["instruction"]}
-    ### Input:
-        {sample["input"]}
-    ### Output:
-        {sample["output"]}
-    """
-    return {'text': '<s>' + prompt + '</s>'}
+def generate_prompt(sample):
+    prompt = f"""### Instruction:
+{sample["instruction"]}
+### Input:
+{sample["input"]}
+### Output:
+{sample["output"]}"""
+    return {'text': prompt}
 
 
 def compute_metrics(preds):
@@ -100,12 +99,17 @@ def setup_model(model):
 
 def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
                   long_lora=False, is_resized=False, all_linear=False):
-    output_dir = "code-llama"
-    batch_size = 128
+    output_dir = f"llm/codellama-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
+    batch_size = 64
     per_device_train_batch_size = 16
     gradient_accumulation_steps = batch_size // per_device_train_batch_size
 
-    target_modules = None       # default
+    target_modules = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+    ]
     if all_linear:
         target_modules = find_all_linear_names(model)
         if is_resized:
@@ -123,15 +127,10 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
         r=16,
-        lora_alpha=16,      # 2*r
+        lora_alpha=32,
         lora_dropout=0.05,
         bias="none",
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-        ],
+        target_modules=None,
         modules_to_save=modules_to_save
     )
     model = get_peft_model(model, peft_config)
@@ -144,16 +143,16 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         gradient_checkpointing=False,
-        num_train_epochs=1,
+        num_train_epochs=2,
         warmup_steps=100,
-        max_steps=400,      # override `num_train_epochs`
+        # max_steps=400,      # override `num_train_epochs`
         # optimize
         optim="adamw_torch",
         learning_rate=3e-4,
         lr_scheduler_type="linear",
         weight_decay=0.,
         # eval
-        per_device_eval_batch_size=2*per_device_train_batch_size,
+        per_device_eval_batch_size=2 * per_device_train_batch_size,
         eval_strategy="steps",
         eval_steps=20,
         # save
@@ -169,9 +168,9 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         dataloader_drop_last=True,
         load_best_model_at_end=True,
         group_by_length=True,
-        report_to="tensorboard",
-        # wandb (optional)
-        # run_name=f"codellama-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+        # report
+        report_to="tensorboard",    # wandb
+        run_name=f"codellama-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"
     )
     trainer = SFTTrainer(
         model=model,
@@ -181,37 +180,6 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         args=train_args,
         peft_config=peft_config,
         dataset_text_field="text",
-        max_seq_length=512,
-        # compute_metrics=compute_metrics
+        max_seq_length=1024,
     )
     return trainer
-
-
-def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
-    lora_dir = osp.realpath(lora_dir)
-    output_dir = osp.realpath(output_dir)
-
-    if base_model:
-        logging.info("Using base model %s", base_model)
-    else:
-        adapter_config_path = osp.join(lora_dir, "adapter_config.json")
-        with open(adapter_config_path) as f:
-            adapter_config = json.load(f)
-        base_model = adapter_config["base_model_name_or_path"]
-        logging.info(f"Base model not given, using {base_model}")
-
-    _, model, tokenizer = load_models(base_model)
-    lora_model = PeftModel.from_pretrained(
-        model,
-        lora_dir,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-        device_map="auto"
-    )
-
-    logging.info("Merging model...")
-    lora_model = lora_model.merge_and_unload()
-
-    logging.info("Merge complete, saving model to %s ...", output_dir)
-    os.makedirs(output_dir, exist_ok=True)
-    lora_model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)

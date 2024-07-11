@@ -9,7 +9,7 @@ Your answer can only be 1 or 0, where 1 means there are some vulnerabilities in 
 '''
     with open('data/devign.json', 'r') as f:
         raw_data = json.load(f)
-        validate_split = int(0.1 * len(raw_data))
+        validate_split = int(0.2 * len(raw_data))
         data = []
         for d in raw_data:
             sample = {
