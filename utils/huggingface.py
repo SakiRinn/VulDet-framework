@@ -53,9 +53,12 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
     config_name = model_name_or_path if not config_name else config_name
     tokenizer_name = model_name_or_path if not tokenizer_name else tokenizer_name
 
-    config = AutoConfig.from_pretrained(config_name if config_name else model_name_or_path)
-    config.num_labels = 1       # binary classification
-    config.use_cache = False
+    try:
+        config = AutoConfig.from_pretrained(config_name if config_name else model_name_or_path)
+        config.num_labels = 1       # binary classification
+        config.use_cache = False
+    except OSError:                 # Not found
+        config = None
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,

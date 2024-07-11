@@ -1,9 +1,9 @@
-import inspect
 import json
 import logging
 import os
 import os.path as osp
 import numpy as np
+from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
@@ -45,7 +45,7 @@ def train(model_name_or_path):
     model = setup_model(model)
     model.train()
     trainer = setup_trainer(model, tokenizer, train_dataset, eval_dataset)
-    trainer.train()
+    trainer.train(resume_from_checkpoint=None)
 
 
 def eval(model_name_or_path):
@@ -53,7 +53,7 @@ def eval(model_name_or_path):
     special_tokens_dict = {}
 
     _, model, tokenizer = load_models(model_name_or_path, int_bits=8)
-    eval_dataset = load_dataset('json', data_files='data/test.json', split='train').map(generate_prompt)
+    eval_dataset = load_dataset('json', data_files='data/eval.json', split='train').map(generate_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
     if tokenizer.pad_token is None:
@@ -78,11 +78,10 @@ def eval(model_name_or_path):
         num_workers=4,
         pin_memory=True)
 
-    eval_step, total_loss = 0, 0.
     preds, labels = [], []
 
     with torch.no_grad():
-        for batch in dataloader:
+        for batch in tqdm(dataloader):
             input_text = tokenizer.bos_token + batch['text'][0].split("\n### Output:\n")[0] + \
                 "\n### Output:\n" + tokenizer.eos_token
             inputs = tokenizer(input_text, return_tensors="pt").to('cuda')
@@ -138,4 +137,7 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
 if __name__ == "__main__":
     Runner.set_seed(42)
     # train('codellama/CodeLlama-7b-hf')
-    eval('codellama/CodeLlama-7b-hf')
+    # lora_merge('llm/codellama-07-11-09-18-54/checkpoint-520',
+    #            'codellama/CodeLlama-7b-hf',
+    #            'llm/codellama-520')
+    eval('llm/codellama-520')
