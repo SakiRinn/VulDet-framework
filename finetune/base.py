@@ -1,24 +1,15 @@
 from datetime import datetime
-import json
 import logging
-import os
-import os.path as osp
+import re
 
-from peft.mapping import get_peft_model
-from peft.peft_model import PeftModel
 import torch
 import bitsandbytes as bnb
 from peft import (
     LoraConfig,
     get_peft_model,
-    get_peft_model_state_dict,
-    prepare_model_for_kbit_training
 )
-from utils.huggingface import load_models, load_datasets
-from transformers import TrainingArguments, DataCollatorForSeq2Seq, Trainer
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
-from utils.huggingface import load_models
 from utils.metric import Metric
 
 
@@ -71,13 +62,15 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
     return list(linear_names)
 
 
-def generate_prompt(sample):
-    prompt = f"""### Instruction:
-{sample["instruction"]}
-### Input:
-{sample["input"]}
-### Output:
-{sample["output"]}"""
+def to_prompt(sample):
+    code = sample['input'].strip()
+    # Remove comments
+    code = re.sub(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)', '', code)
+    # Remove multiple blank lines
+    code = re.sub(r'\s*\n', '\n', code)
+    prompt = f"### Instruction:\n{sample['instruction']}\n" \
+             f"\n### Input:\n{code}\n" \
+             f"\n### Output:\n{sample['output']}"
     return {'text': prompt}
 
 
@@ -99,17 +92,12 @@ def setup_model(model):
 
 def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
                   long_lora=False, is_resized=False, all_linear=False):
-    output_dir = f"llm/codellama-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
-    batch_size = 64
-    per_device_train_batch_size = 16
+    output_dir = f"saved_models/lora-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
+    batch_size = 12
+    per_device_train_batch_size = 6
     gradient_accumulation_steps = batch_size // per_device_train_batch_size
 
-    target_modules = [
-        "q_proj",
-        "k_proj",
-        "v_proj",
-        "o_proj",
-    ]
+    target_modules = None
     if all_linear:
         target_modules = find_all_linear_names(model)
         if is_resized:
@@ -130,47 +118,53 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         lora_alpha=32,
         lora_dropout=0.05,
         bias="none",
-        target_modules=None,
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+        ],
         modules_to_save=modules_to_save
     )
     model = get_peft_model(model, peft_config)
 
-    train_args = TrainingArguments(
+    train_args = SFTConfig(
         output_dir=output_dir,
         do_train=True,
-        do_eval=True,
         # train
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        gradient_checkpointing=False,
         num_train_epochs=2,
         warmup_steps=100,
-        # max_steps=400,      # override `num_train_epochs`
+        # max_steps=400,              # override `num_train_epochs`
         # optimize
-        optim="adamw_torch",
+        optim="adamw_bnb_8bit",     # adamw_torch & adamw_bnb_8bit
         learning_rate=3e-4,
         lr_scheduler_type="linear",
         weight_decay=0.,
         # eval
+        # eval_strategy="steps",
         per_device_eval_batch_size=2 * per_device_train_batch_size,
-        eval_strategy="steps",
         eval_steps=20,
-        # save
+        # load_best_model_at_end=True,
+        # log & save
         logging_strategy="steps",
         logging_steps=10,
         save_strategy="steps",
         save_steps=20,
         save_total_limit=10,
+        # dataset
+        dataset_text_field="text",
+        dataloader_drop_last=True,
+        group_by_length=True,
         # dtype
         bf16=True if torch.cuda.is_bf16_supported() else False,
         fp16=False if torch.cuda.is_bf16_supported() else True,
         # other
-        dataloader_drop_last=True,
-        load_best_model_at_end=True,
-        group_by_length=True,
+        gradient_checkpointing=True,
         # report
-        report_to="tensorboard",    # wandb
-        run_name=f"codellama-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+        report_to="tensorboard",        # wandb
+        run_name=f"lora-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
     )
     trainer = SFTTrainer(
         model=model,
@@ -179,7 +173,6 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         eval_dataset=eval_dataset,
         args=train_args,
         peft_config=peft_config,
-        dataset_text_field="text",
-        max_seq_length=1024,
+        max_seq_length=2048,
     )
     return trainer

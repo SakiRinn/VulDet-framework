@@ -38,7 +38,7 @@ class TextEntry(DataEntry):
 class TextDataset(BaseDataset):
 
     def __init__(self, file_path, is_train=False, validate_split=1.,
-                 file_type=None, code_tag='func', label_tag='target'):
+                 file_type=None, code_tag='code', label_tag='label'):
         file_path = osp.realpath(file_path)
         if file_type is None:
             file_type = file_path.split("/")[-1].split(".")[1]

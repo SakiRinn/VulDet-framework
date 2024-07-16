@@ -161,10 +161,8 @@ cython_debug/
 
 data/*
 !data/.gitkeep
-saved_models/
 .vscode/
 outputs/
 raw_code/
 tmp/
-code-llama/
-llm
+saved_models

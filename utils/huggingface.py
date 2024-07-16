@@ -36,7 +36,6 @@ def get_quantization_config(int_bits=-1):
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True
         )
-        # optimizer = "adamw_bnb_8bit"
     else:
         bnb_config = None
     return bnb_config
@@ -69,7 +68,7 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
         device_map="auto"
     )
     if int_bits != -1:
-        model = prepare_model_for_kbit_training(model)
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name,

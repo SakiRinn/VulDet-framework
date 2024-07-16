@@ -44,8 +44,8 @@ class Runner:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
-        self.set_device(False)
-        self.set_logger()
+        self.setup_device(False)
+        self.setup_logger()
 
     def train(self, optimizer, dataset, scheduler=None, eval_dataset=None):
 
@@ -244,7 +244,7 @@ class Runner:
         return prob
 
     @staticmethod
-    def set_seed(seed):
+    def setup_seed(seed):
         random.seed(seed)
         os.environ['PYHTONHASHSEED'] = str(seed)
         np.random.seed(seed)
@@ -252,7 +252,7 @@ class Runner:
         torch.cuda.manual_seed(seed)
         torch.backends.cudnn.deterministic = True
 
-    def set_logger(self, filename='runner.log'):
+    def setup_logger(self, filename='runner.log'):
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
                                       datefmt='%m/%d/%Y %H:%M:%S')
         # To stderr
@@ -269,7 +269,9 @@ class Runner:
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
 
-    def set_device(self, no_cuda=False):
+    def setup_device(self, no_cuda=False):
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = True
         if self.local_rank == -1:
             self.device = torch.device("cpu" if no_cuda else "cuda")
             self.n_gpu = torch.cuda.device_count()

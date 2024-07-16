@@ -83,8 +83,8 @@ def main():
     # - Runner
     train_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
     runner = Runner(model, tokenizer, train_args, eval_args, args.output_dir)
-    runner.set_seed(args.seed)
-    runner.set_device(args.no_cuda)
+    runner.setup_seed(args.seed)
+    runner.setup_device(args.no_cuda)
 
     logging.info('***** Basic information *****')
     logging.info(f"\tConfig: {args.config}")

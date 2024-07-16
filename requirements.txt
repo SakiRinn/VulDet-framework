@@ -1,10 +1,9 @@
-# torch==2.1.0
-# torchtext==0.16.0
+torch==2.1.0
+torchtext==0.16.0
 transformers===4.32.1
 tokenizers==0.13.3
 datasets==2.20.0
 trl==0.9.6
-accelerate==0.32.1
 bitsandbytes==0.43.1
 gensim==4.3.0
 nltk==3.8.1
@@ -12,3 +11,5 @@ scikit-learn==1.2.2
 scipy==1.12.0
 tqdm==4.66.4
 pyyaml==6.0.1
+# pip install git+https://github.com/huggingface/transformers.git@main accelerate
+accelerate==0.32.1
