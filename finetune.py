@@ -15,7 +15,7 @@ from peft.peft_model import PeftModel
 import utils
 from utils.huggingface import load_models
 
-DEFAULT_PAD_TOKEN = "[PAD]"
+DEFAULT_PAD_TOKEN = "<pad>"
 DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "<s>"
 DEFAULT_UNK_TOKEN = "<unk>"
@@ -28,7 +28,7 @@ def train(model_name_or_path):
     custom_tokens = []
     special_tokens_dict = {}
 
-    _, model, tokenizer = load_models(model_name_or_path, int_bits=8)
+    _, model, tokenizer = load_models(model_name_or_path, bits=8)
     train_dataset = Dataset.from_json('data/devign/train.json').map(to_prompt)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(to_prompt)
 
@@ -55,7 +55,7 @@ def eval(model_name_or_path):
     custom_tokens = []
     special_tokens_dict = {}
 
-    _, model, tokenizer = load_models(model_name_or_path, int_bits=8)
+    _, model, tokenizer = load_models(model_name_or_path, bits=8)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(to_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
@@ -77,7 +77,7 @@ def eval(model_name_or_path):
     dataloader = DataLoader(
         dataset,
         sampler=SequentialSampler(dataset),
-        batch_size=1,
+        batch_size=4,
         num_workers=4,
         pin_memory=True)
 
@@ -87,8 +87,9 @@ def eval(model_name_or_path):
         for batch in tqdm(dataloader):
             input_text = tokenizer.bos_token + batch['text'][0].split("\n### Output:\n")[0] + \
                 "\n### Output:\n" + tokenizer.eos_token
-            inputs = tokenizer(input_text, return_tensors="pt").to('cuda')
-            outputs = model.generate(**inputs, max_new_tokens=64).squeeze()
+            inputs = tokenizer(input_text, return_tensors="pt",
+                               truncation=True, padding=True).to('cuda')
+            outputs = model.generate(**inputs, max_new_tokens=16).squeeze()
             output_text = tokenizer.decode(outputs, skip_special_tokens=True)
 
             output_split = output_text.split("\n### Output:\n")
@@ -123,7 +124,23 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
         base_model = adapter_config["base_model_name_or_path"]
         logging.info(f"Base model not given, using {base_model}")
 
-    _, base_model, tokenizer = load_models(base_model)
+    _, base_model, tokenizer = load_models(base_model, bits=8)
+
+    custom_tokens = []
+    special_tokens_dict = {}
+
+    custom_tokens = [token.strip() for token in custom_tokens]
+    if tokenizer.pad_token is None:
+        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
+    if tokenizer.eos_token is None:
+        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
+    if tokenizer.bos_token is None:
+        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
+    if tokenizer.unk_token is None:
+        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
+    if special_tokens_dict or custom_tokens:
+        resize_tokenizer_and_embedding(base_model, tokenizer, special_tokens_dict, custom_tokens)
+
     model = PeftModel.from_pretrained(
         base_model,
         lora_dir,
@@ -142,8 +159,8 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
 
 if __name__ == "__main__":
     utils.Runner.setup_seed(114514)
-    train('meta-llama/Meta-Llama-3-8B')
-    # lora_merge('saved_models/codellama-07-14-02-54-01/checkpoint-682',
+    # train('meta-llama/Meta-Llama-3-8B')
+    # lora_merge('saved_models/lora-07-17-03-54-57/checkpoint-3642',
     #            'meta-llama/Meta-Llama-3-8B',
-    #            'saved_models/codellama-merged')
-    # eval('meta-llama/Llama-2-7b-hf')
+    #            '/root/autodl-tmp/llama-3-merged')
+    eval('/root/autodl-tmp/llama-3-merged')

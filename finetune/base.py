@@ -8,7 +8,7 @@ from peft import (
     LoraConfig,
     get_peft_model,
 )
-from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
+from trl import SFTTrainer, SFTConfig
 
 from utils.metric import Metric
 
@@ -19,32 +19,25 @@ def resize_tokenizer_and_embedding(model, tokenizer,
     """
     NOTE: This is the unoptimized version that may make your embedding size not be divisible by 64.
     """
-
-    if not special_tokens_dict and not custom_tokens:
-        return ValueError("Parameter `special_tokens_dict` and `custom_tokens cannot` can't be empty at the same time.")
-
     logging.info("Resizing tokenizer and embedding...")
-    logging.info("Special tokens dict: %s", special_tokens_dict)
-    logging.info("Custom tokens: %s", custom_tokens)
+    logging.info(f"Special tokens dict: {special_tokens_dict}")
+    logging.info(f"Custom tokens: {custom_tokens}")
 
     if special_tokens_dict:
         tokenizer.add_special_tokens(special_tokens_dict)
     if custom_tokens:
         tokenizer.add_tokens(custom_tokens, special_tokens=True)
+    original_embeddings = model.get_input_embeddings().weight.data
     model.resize_token_embeddings(len(tokenizer))
 
-    num_new_tokens = len(list(special_tokens_dict.keys())) + (0 if custom_tokens is None else len(custom_tokens))
-    logging.info("Number of new tokens: %d", num_new_tokens)
+    new_tokens = list(special_tokens_dict.keys()) + custom_tokens
+    logging.info(f"Number of new tokens: {len(new_tokens)}")
 
-    if num_new_tokens > 0:
+    if len(new_tokens) > 0:
         input_embeddings = model.get_input_embeddings().weight.data
         output_embeddings = model.get_output_embeddings().weight.data
-
-        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
-        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
-
-        input_embeddings[-num_new_tokens:] = input_embeddings_avg
-        output_embeddings[-num_new_tokens:] = output_embeddings_avg
+        input_embeddings[-len(new_tokens):] = input_embeddings[:-len(new_tokens)].mean(dim=0, keepdim=True)
+        output_embeddings[-len(new_tokens):] = output_embeddings[:-len(new_tokens)].mean(dim=0, keepdim=True)
 
 
 def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
@@ -152,7 +145,7 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         logging_steps=10,
         save_strategy="steps",
         save_steps=20,
-        save_total_limit=10,
+        save_total_limit=5,
         # dataset
         dataset_text_field="text",
         dataloader_drop_last=True,

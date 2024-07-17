@@ -48,7 +48,7 @@ def load_datasets(dataset_name, validate_split=0.1):
 
 
 def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
-                do_lower_case=False, int_bits=-1):
+                do_lower_case=False, bits=-1):
     config_name = model_name_or_path if not config_name else config_name
     tokenizer_name = model_name_or_path if not tokenizer_name else tokenizer_name
 
@@ -62,12 +62,12 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
         config=config,
-        quantization_config=get_quantization_config(int_bits),
+        quantization_config=get_quantization_config(bits),
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         from_tf='.ckpt' in model_name_or_path,
         device_map="auto"
     )
-    if int_bits != -1:
+    if bits != -1:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -76,10 +76,5 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
     )
     tokenizer.add_eos_token = True
     tokenizer.padding_side = "left"
-    tokenizer.pad_token_id = 0
-    # THIS IS A HACK TO GET THE PAD TOKEN ID NOT TO BE EOS (LLaMa: 18610)
-    # if pad_token_id is not None:
-    #     tokenizer.pad_token_id = pad_token_id
-    #     tokenizer.pad_token = tokenizer.convert_ids_to_tokens(pad_token_id)
 
     return config, model, tokenizer

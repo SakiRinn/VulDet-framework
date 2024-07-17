@@ -1,11 +1,9 @@
 import argparse
-from functools import partial
 import inspect
 import logging
 import math
 
 import torch
-from transformers.tokenization_utils import PreTrainedTokenizer
 import yaml
 
 import dataloaders
