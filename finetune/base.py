@@ -55,7 +55,7 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
     return list(linear_names)
 
 
-def to_prompt(sample):
+def train_prompt(sample):
     code = sample['input'].strip()
     # Remove comments
     code = re.sub(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)', '', code)
@@ -64,6 +64,18 @@ def to_prompt(sample):
     prompt = f"### Instruction:\n{sample['instruction']}\n" \
              f"\n### Input:\n{code}\n" \
              f"\n### Output:\n{sample['output']}"
+    return {'text': prompt}
+
+
+def eval_prompt(sample):
+    code = sample['input'].strip()
+    # Remove comments
+    code = re.sub(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)', '', code)
+    # Remove multiple blank lines
+    code = re.sub(r'\s*\n', '\n', code)
+    prompt = f"### Instruction:\n{sample['instruction']}\n" \
+             f"\n### Input:\n{code}\n" \
+             f"\n### Output:\n"
     return {'text': prompt}
 
 

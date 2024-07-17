@@ -76,5 +76,6 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
     )
     tokenizer.add_eos_token = True
     tokenizer.padding_side = "left"
+    tokenizer.pad_token_id = 0          # TODO: remove
 
     return config, model, tokenizer

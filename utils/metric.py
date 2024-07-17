@@ -5,11 +5,11 @@ import sklearn.metrics as metrics
 class Metric:
     def __init__(self, probs: 'np.ndarray', labels: 'np.ndarray'):
         self.probs = probs.astype(np.float32)
-        self.labels = labels.astype(np.float32)
+        self.labels = labels.astype(np.float32).squeeze()
 
-        if probs.ndim == 1:
-            self.preds = probs
-        elif probs.ndim == 2:
+        if self.probs.ndim == 1:
+            self.preds = self.probs
+        elif self.probs.ndim == 2:
             self.preds = self.probs.argmax(axis=1)
         else:
             raise RuntimeError

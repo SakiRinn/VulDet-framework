@@ -9,9 +9,10 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, SequentialSampler
 from datasets import Dataset
-from finetune import resize_tokenizer_and_embedding, to_prompt, setup_model, setup_trainer
+from finetune import resize_tokenizer_and_embedding, train_prompt, setup_model, setup_trainer
 from peft.peft_model import PeftModel
 
+from finetune.base import eval_prompt
 import utils
 from utils.huggingface import load_models
 
@@ -29,8 +30,8 @@ def train(model_name_or_path):
     special_tokens_dict = {}
 
     _, model, tokenizer = load_models(model_name_or_path, bits=8)
-    train_dataset = Dataset.from_json('data/devign/train.json').map(to_prompt)
-    eval_dataset = Dataset.from_json('data/devign/eval.json').map(to_prompt)
+    train_dataset = Dataset.from_json('data/devign/train.json').map(train_prompt)
+    eval_dataset = Dataset.from_json('data/devign/eval.json').map(train_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
     if tokenizer.pad_token is None:
@@ -54,9 +55,10 @@ def train(model_name_or_path):
 def eval(model_name_or_path):
     custom_tokens = []
     special_tokens_dict = {}
+    max_length = 2048
 
     _, model, tokenizer = load_models(model_name_or_path, bits=8)
-    eval_dataset = Dataset.from_json('data/devign/eval.json').map(to_prompt)
+    eval_dataset = Dataset.from_json('data/devign/eval.json').map(eval_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
     if tokenizer.pad_token is None:
@@ -77,7 +79,7 @@ def eval(model_name_or_path):
     dataloader = DataLoader(
         dataset,
         sampler=SequentialSampler(dataset),
-        batch_size=4,
+        batch_size=6,
         num_workers=4,
         pin_memory=True)
 
@@ -85,19 +87,22 @@ def eval(model_name_or_path):
 
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            input_text = tokenizer.bos_token + batch['text'][0].split("\n### Output:\n")[0] + \
-                "\n### Output:\n" + tokenizer.eos_token
-            inputs = tokenizer(input_text, return_tensors="pt",
+            len_filter = [i for i, t in enumerate(batch['text']) if len(t) < max_length]
+            label = np.array([1 if 'VULNERABLE' in t else 0
+                              for t in batch['output']])[len_filter]
+
+            input_texts = [t for t in batch['text'] if len(t) < max_length]
+            inputs = tokenizer(input_texts, return_tensors="pt",
                                truncation=True, padding=True).to('cuda')
-            outputs = model.generate(**inputs, max_new_tokens=16).squeeze()
-            output_text = tokenizer.decode(outputs, skip_special_tokens=True)
+            outputs = model.generate(**inputs, max_new_tokens=16)
+            output_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-            output_split = output_text.split("\n### Output:\n")
-            pred_text = output_split[1] if len(output_split) > 1 else ''
-            print(pred_text, file=sys.stderr)
+            pred_texts = [t.split("### Output:\n")[1].strip() for t in output_texts]
+            pred = np.array([1 if 'VULNERABLE' in t else 0 for t in pred_texts])
 
-            pred = np.array([1 if 'VULNERABLE' in pred_text else 0])
-            label = np.array([1 if 'VULNERABLE' in batch['output'][0] else 0])
+            for t in pred_texts:
+                print(f'### OUTPUTS:\n{t}\n', file=sys.stderr)
+
             preds.append(pred)
             labels.append(label)
 
