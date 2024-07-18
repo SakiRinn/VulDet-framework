@@ -1,0 +1,27 @@
+dataset:
+    file_path: <YOUR_PATH>
+    file_type: 'json'
+    code_tag: 'code'
+    label_tag: 'label'
+    validate_split: 0.2
+transformer:
+    model_name_or_path: 'meta-llama/Llama-2-7b-hf'
+    config_name: ''
+    tokenizer_name: ''
+    do_lower_case: False
+    bits: 8
+optimizer:
+    scheduler:
+        type: 'linear'
+        num_warmup_steps: -1
+    lr: 0.0005
+    weight_decay: 0.0
+    eps: 0.00000001
+runner:
+    train_batch_size: 128
+    eval_batch_size: 128
+    epochs: 30
+    save_per_steps: -1
+    log_per_steps: -1
+    max_grad_norm: 1.0
+seed: 42

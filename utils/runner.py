@@ -1,20 +1,25 @@
-from datetime import datetime
-import logging
 import os
+import os.path as osp
+import logging
 import random
-import numpy as np
-from tqdm import tqdm
 import inspect
+import json
+from datetime import datetime
+from tqdm import tqdm
+import numpy as np
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset, SequentialSampler, RandomSampler
-from torch.utils.data.distributed import DistributedSampler
 import torch.nn.functional as F
-
+from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
+from torch.utils.data.distributed import DistributedSampler
 from transformers.modeling_outputs import ModelOutput
+from peft import LoraConfig, get_peft_model, PeftModel
+from trl import SFTTrainer, SFTConfig
 
 import utils
+from utils.huggingface import DEFAULT_TOKENS, load_transformers
+from utils.llm import find_all_linear_names, resize_embedding_and_tokenizer
 
 
 def get_param_names(func):
@@ -39,23 +44,23 @@ class Runner:
         self.tokenizer = tokenizer
         self.output_dir = output_dir
 
-        self.cur_epoch, self.cur_step = 0, 0
-        self.local_rank = -1
+        date = datetime.now().strftime("%m-%d-%H:%M:%S")
+        self.output_dir = os.path.join(self.output_dir, date)
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
 
         for k, v in kwargs.items():
             if k not in self.SUPPORTED_KWARGS:
                 raise TypeError(f"`{k}` is an invalid keyword argument for runner.")
             setattr(self, k, v)
 
-        date = datetime.now().strftime("%m-%d-%H:%M:%S")
-        self.output_dir = os.path.join(self.output_dir, date)
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        self.cur_epoch, self.cur_step = 0, 0
+        self.local_rank = -1
 
         self.setup_device(False)
         self.setup_logger()
 
-    def train(self, optimizer, dataset, scheduler=None, eval_dataset=None):
+    def train(self, optimizer, dataset, lr_scheduler=None, eval_dataset=None):
 
         ##############################
         ###    Before training     ###
@@ -143,8 +148,8 @@ class Runner:
                 # Update
                 optimizer.step()
                 optimizer.zero_grad()
-                if scheduler is not None:
-                    scheduler.step()
+                if lr_scheduler is not None:
+                    lr_scheduler.step()
 
                 # Statistic
                 total_loss += loss.item()
@@ -155,7 +160,7 @@ class Runner:
                                      f"avg_loss: {round(avg_loss, 4)}")
                     if self.cur_step % self.save_per_steps == 0:
                         self.save_weights(f'{self.model.__class__.__name__}_e{epoch + 1}s{step}',
-                                          optimizer, scheduler)
+                                          optimizer, lr_scheduler)
                 self.cur_step += 1
 
             logging.info(f"[epoch {epoch + 1}] Completed. avg_loss: {round(avg_loss, 4)}")
@@ -171,7 +176,7 @@ class Runner:
                     best_f1 = results['F1-score']
                     logging.info(f"Best f1-score: {round(best_f1, 4)}!")
                     self.save_weights(f'{self.model.__class__.__name__}_best-f1',
-                                      optimizer, scheduler)
+                                      optimizer, lr_scheduler)
         return self.model
 
     def eval(self, dataset, when_training=False):
@@ -240,13 +245,13 @@ class Runner:
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 
-    def inference(self, sample):
-        code = ' '.join(sample.split())
-        inputs = self.tokenizer(code, return_tensors="pt").to(self.device)
+    def inference(self, code_sample):
+        tokens = ' '.join(code_sample.split())
+        inputs = self.tokenizer(tokens, return_tensors="pt").to(self.device)
         inputs = {k: v for k, v in inputs.items()
                   if k in get_param_names(self.model.forward)}
         outputs = self.model(**inputs)
-        loss, logits = outputs.to_tuple()[:2] \
+        _, logits = outputs.to_tuple()[:2] \
             if isinstance(outputs, ModelOutput) else outputs[:2]
         prob = F.softmax(logits.mean(dim=1))
         return prob
@@ -280,6 +285,7 @@ class Runner:
     def setup_device(self, no_cuda=False):
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+
         if self.local_rank == -1:
             self.device = torch.device("cpu" if no_cuda else "cuda")
             self.n_gpu = torch.cuda.device_count()
@@ -292,10 +298,7 @@ class Runner:
 
         self.train_batch_size_per_gpu = self.train_batch_size // max(self.n_gpu, 1)
         self.eval_batch_size_per_gpu = self.eval_batch_size // max(self.n_gpu, 1)
-        try:
-            self.model = self.model.to(self.device)
-        except ValueError:
-            pass
+        self.model = self.model.to(self.device)
 
     def save_weights(self, filename, optimizer=None, scheduler=None):
         weights = {
@@ -333,3 +336,197 @@ class Runner:
                 logging.info("Success to load scheduler's weights.")
             except TypeError:
                 logging.warning(f"Fail to load scheduler's weights! They are not in {weight_path}.")
+
+
+class FinetuneRunner(Runner):
+
+    SUPPORTED_KWARGS = [
+        'train_batch_size',
+        'eval_batch_size',
+        'epochs',
+        'save_per_steps',
+        'log_per_steps',
+        'max_grad_norm',
+    ]
+
+    def __init__(self, model, tokenizer, output_dir='./outputs', **kwargs):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.output_dir = output_dir
+
+        date = datetime.now().strftime("%m-%d-%H:%M:%S")
+        self.output_dir = os.path.join(self.output_dir, date)
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        for k, v in kwargs.items():
+            if k not in self.SUPPORTED_KWARGS:
+                raise TypeError(f"`{k}` is an invalid keyword argument for runner.")
+            setattr(self, k, v)
+
+        self.custom_tokens = [token.strip() for token in self.custom_tokens]
+        self.is_resized = resize_embedding_and_tokenizer(
+            self.model, self.tokenizer, DEFAULT_TOKENS, self.custom_tokens)
+
+        self.setup_device(False)
+        self.setup_logger()
+
+    def train(self, dataset, eval_dataset=None):
+        self.model.train()
+        self.model.enable_input_require_grads()
+
+        target_modules = None
+        if self.all_linear:
+            target_modules = find_all_linear_names(self.model)
+            if self.is_resized:
+                # Removing lm_head from target modules, will use in modules_to_save
+                target_modules.pop(target_modules.index("lm_head"))
+
+        if self.long_lora:
+            modules_to_save = ["embed_tokens", "input_layernorm",
+                               "post_attention_layernorm", "norm"]
+            if self.is_resized:
+                modules_to_save += ["lm_head"]
+        elif self.is_resized:
+            modules_to_save = ["embed_tokens", "lm_head"]
+
+        peft_config = LoraConfig(
+            task_type="CAUSAL_LM",
+            r=16,
+            lora_alpha=32,
+            lora_dropout=0.05,
+            bias="none",
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+            ],
+            modules_to_save=modules_to_save
+        )
+
+        train_args = SFTConfig(
+            output_dir=self.output_dir,
+            do_train=True,
+            # train
+            per_device_train_batch_size=self.train_batch_size_per_gpu,
+            gradient_accumulation_steps=self.n_gpu,
+            num_train_epochs=5,
+            warmup_steps=100,
+            # max_steps=400,                  # override `num_train_epochs`
+            # optimize
+            optim='adamw_bnb_8bit',
+            learning_rate=3e-4,
+            lr_scheduler_type='linear',
+            weight_decay=0.,
+            # eval
+            # eval_strategy="steps",
+            per_device_eval_batch_size=2 * self.train_batch_size_per_gpu,
+            eval_steps=20,
+            # load_best_model_at_end=True,
+            # log & save
+            logging_strategy="steps",
+            logging_steps=10,
+            save_strategy="steps",
+            save_steps=20,
+            save_total_limit=5,
+            # dataset
+            dataset_text_field="text",
+            dataloader_drop_last=True,
+            group_by_length=True,
+            # dtype
+            bf16=True if torch.cuda.is_bf16_supported() else False,
+            fp16=False if torch.cuda.is_bf16_supported() else True,
+            # other
+            gradient_checkpointing=True,
+            # report
+            report_to="tensorboard",        # wandb
+            run_name=f"lora-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
+        )
+
+        peft_model = get_peft_model(self.model, peft_config)
+        # peft_model = torch.compile(peft_model)
+        peft_model.print_trainable_parameters()
+
+        trainer = SFTTrainer(
+            model=peft_model,
+            tokenizer=self.tokenizer,
+            train_dataset=dataset,
+            eval_dataset=eval_dataset,
+            peft_config=peft_config,
+            args=train_args,
+            max_seq_length=2048
+        )
+        trainer.train(resume_from_checkpoint=None)
+
+    def eval(self, eval_dataset):
+        max_length = 2048
+        self.model.eval()
+
+        dataloader = DataLoader(
+            eval_dataset,
+            sampler=SequentialSampler(eval_dataset),
+            batch_size=6,
+            num_workers=4,
+            pin_memory=True)
+
+        preds, labels = [], []
+        with torch.no_grad():
+            for batch in tqdm(dataloader):
+                len_filter = [i for i, t in enumerate(batch['text']) if len(t) < max_length]
+                label = np.array([1 if 'VULNERABLE' in t else 0
+                                  for t in batch['output']])[len_filter]
+
+                input_texts = [t for t in batch['text'] if len(t) < max_length]
+                inputs = self.tokenizer(input_texts, return_tensors="pt",
+                                        truncation=True, padding=True).to('cuda')
+                outputs = self.model.generate(**inputs, max_new_tokens=16)
+                output_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+                pred_texts = [t.split("### Output:\n")[1].strip() for t in output_texts]
+                pred = np.array([1 if 'VULNERABLE' in t else 0 for t in pred_texts])
+
+                preds.append(pred)
+                labels.append(label)
+
+        # Aggregate
+        preds = np.concatenate(preds, 0)
+        labels = np.concatenate(labels, 0)
+
+        results = utils.Metric(preds, labels)()
+        return results
+
+    def inference(self, code_sample):
+        ...
+
+    def lora_merge(self, lora_dir):
+        if base_model:
+            logging.info(f"Using base model {base_model}")
+        else:
+            adapter_config_path = osp.join(lora_dir, "adapter_config.json")
+            with open(adapter_config_path) as f:
+                adapter_config = json.load(f)
+            base_model = adapter_config["base_model_name_or_path"]
+            logging.info(f"Base model not given, using {base_model}")
+
+        _, base_model, tokenizer = load_transformers(base_model, bits=8)
+
+        model = PeftModel.from_pretrained(
+            base_model,
+            lora_dir,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            device_map="auto"
+        )
+
+        logging.info("Merging model...")
+        model = model.merge_and_unload()
+
+        logging.info("Merge complete, saving the merged model...", )
+        model.save_pretrained('model-merged')
+        tokenizer.save_pretrained('model-merged')
+
+    def save_weights(self):
+        return NotImplementedError
+
+    def load_weights(self):
+        return NotImplementedError

@@ -9,11 +9,11 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, SequentialSampler
 from datasets import Dataset
-from finetune import resize_embedding_and_tokenizer, train_prompt, eval_prompt, setup_trainer
 from peft.peft_model import PeftModel
 
 import utils
-from utils.huggingface import load_models, DEFAULT_TOKENS
+from utils.llm import resize_embedding_and_tokenizer, train_prompt, eval_prompt, setup_trainer
+from utils.huggingface import load_transformers, DEFAULT_TOKENS
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -22,16 +22,17 @@ torch.backends.cudnn.benchmark = True
 def train(model_name_or_path):
     custom_tokens = []
 
-    _, model, tokenizer = load_models(model_name_or_path, bits=8)
+    _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
     train_dataset = Dataset.from_json('data/devign/train.json').map(train_prompt)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(train_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
-    resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
+    is_resized = resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
     model.train()
     model.enable_input_require_grads()
-    trainer = setup_trainer(model, tokenizer, train_dataset, eval_dataset)
+    trainer = setup_trainer(model, tokenizer, train_dataset, eval_dataset,
+                            is_resized=is_resized)
     trainer.train(resume_from_checkpoint=None)
 
 
@@ -39,7 +40,7 @@ def eval(model_name_or_path):
     custom_tokens = []
     max_length = 2048
 
-    _, model, tokenizer = load_models(model_name_or_path, bits=8)
+    _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(eval_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
@@ -103,7 +104,7 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
         base_model = adapter_config["base_model_name_or_path"]
         logging.info(f"Base model not given, using {base_model}")
 
-    _, base_model, tokenizer = load_models(base_model, bits=8)
+    _, base_model, tokenizer = load_transformers(base_model, bits=8)
 
     custom_tokens = [token.strip() for token in custom_tokens]
     resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)

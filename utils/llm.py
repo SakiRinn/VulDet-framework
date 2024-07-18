@@ -6,7 +6,6 @@ import bitsandbytes as bnb
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
 
-from utils.metric import Metric
 from utils.tokenize import remove_comments, remove_blank_lines
 
 
@@ -85,12 +84,6 @@ def eval_prompt(sample):
              f"\n### Input:\n{code}\n" \
              f"\n### Output:\n"
     return {'text': prompt}
-
-
-def compute_metrics(preds):
-    logits, labels = preds
-    metrics = Metric(logits, labels)()
-    return metrics
 
 
 def setup_trainer(model, tokenizer, train_dataset, eval_dataset,

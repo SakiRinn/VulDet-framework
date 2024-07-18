@@ -1,29 +1,25 @@
 class:
     dataset: 'TextDataset'
-    model: 'ReGVD'
+    model: 'DevignForSequence'
     optimizer: 'AdamW'
 dataset:
-    file_path: 'data/devign/devign.json'
+    file_path: <YOUR_PATH>
     file_type: 'json'
+    code_tag: 'func'
+    label_tag: 'target'
     validate_split: 0.2
 model:
     transformer:
         model_name_or_path: 'microsoft/codebert-base'
-        config_name: ''
-        tokenizer_name: ''
         do_lower_case: False
-    gnn: 'ResGatedGNN'
     window_size: 5
-    remove_residual: False
-    att_op: 'mul'
     hidden_size: 256
     feature_size: 768
     num_classes: 2
     num_gnn_layers: 2
 optimizer:
-    scheduler:
+    lr_scheduler:
         type: 'linear'
-        num_warmup_steps: -1
     lr: 0.0005
     weight_decay: 0.0
     eps: 0.00000001
@@ -31,7 +27,5 @@ runner:
     train_batch_size: 128
     eval_batch_size: 128
     epochs: 30
-    save_per_steps: -1
-    log_per_steps: -1
     max_grad_norm: 1.0
 seed: 42

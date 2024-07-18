@@ -49,8 +49,8 @@ def load_datasets(dataset_name_or_path: str, validate_split=0.1):
     return train_dataset, eval_dataset
 
 
-def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
-                do_lower_case=False, bits=-1):
+def load_transformers(model_name_or_path: str, config_name='', tokenizer_name='',
+                      do_lower_case=False, bits=-1):
     config_name = model_name_or_path if not config_name else config_name
     tokenizer_name = model_name_or_path if not tokenizer_name else tokenizer_name
 

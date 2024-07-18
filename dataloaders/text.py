@@ -37,11 +37,18 @@ class TextEntry(DataEntry):
 
 class TextDataset(BaseDataset):
 
+    SUPPORTED_TYPES = [
+        'json',
+        'draper',
+    ]
+
     def __init__(self, file_path, is_train=False, validate_split=1.,
                  file_type=None, code_tag='code', label_tag='label'):
         file_path = osp.realpath(file_path)
         if file_type is None:
             file_type = file_path.split("/")[-1].split(".")[1]
+        if file_type not in self.SUPPORTED_TYPES:
+            raise TypeError(f"`{file_type}` is an unsupported file type for text dataset.")
         self.load = partial(getattr(self, 'load_' + file_type),
                             code_tag=code_tag, label_tag=label_tag)
         super().__init__(file_path, is_train, validate_split)
@@ -65,7 +72,7 @@ class TextDataset(BaseDataset):
         return data
 
     @staticmethod
-    def load_hdf5(file_path, code_tag='code', label_tag='label'):
+    def load_draper(file_path, code_tag='code', label_tag='label'):
         # Read
         with h5py.File(file_path, 'r') as f:
             raw_data = hdf5_to_dict(f)

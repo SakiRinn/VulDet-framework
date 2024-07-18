@@ -9,7 +9,7 @@ import yaml
 import dataloaders
 import models
 from utils import Runner
-from utils.huggingface import SCHEDULER_TYPES, load_models
+from utils.huggingface import SCHEDULER_TYPES, load_transformers
 
 
 def get_classes(module):
@@ -67,7 +67,7 @@ def main():
 
     # - Model
     if 'transformer' in model_args.keys():
-        config, transformer, tokenizer = load_models(**model_args['transformer'])
+        config, transformer, tokenizer = load_transformers(**model_args['transformer'])
         del model_args['transformer']
         model = model_class(transformer, config, tokenizer, **model_args)
     else:
@@ -97,17 +97,17 @@ def main():
     logging.info("Loading completed.")
 
     # - Optimizer & scheduler
-    if 'scheduler' in optimizer_args.keys():
-        scheduler_args = optimizer_args['scheduler']
-        scheduler_func = SCHEDULER_TYPES[scheduler_args['type']]
-        del optimizer_args['scheduler'], scheduler_args['type']
+    if 'lr_scheduler' in optimizer_args.keys():
+        lr_scheduler_args = optimizer_args['lr_scheduler']
+        lr_scheduler_type = SCHEDULER_TYPES[lr_scheduler_args['type']]
+        del optimizer_args['lr_scheduler'], lr_scheduler_args['type']
 
         steps_per_epoch = math.ceil(len(train_dataset) / runner_args['batch_size'])
-        scheduler_args['num_training_steps'] = runner_args['epochs'] * steps_per_epoch
-        if scheduler_args['num_warmup_steps'] < 0:      # can be 0
-            scheduler_args['num_warmup_steps'] = steps_per_epoch
+        lr_scheduler_args['num_training_steps'] = runner_args['epochs'] * steps_per_epoch
+        if lr_scheduler_args['num_warmup_steps'] < 0:      # can be 0
+            lr_scheduler_args['num_warmup_steps'] = steps_per_epoch
     else:
-        scheduler_func = None
+        lr_scheduler_type = None
 
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
@@ -118,18 +118,19 @@ def main():
     ]
     del optimizer_args['weight_decay']
     optimizer = optimizer_class(optimizer_grouped_parameters, **optimizer_args)
-    scheduler = scheduler_func(optimizer, **scheduler_args) if scheduler_func is not None else None
+    lr_scheduler = lr_scheduler_type(optimizer, **lr_scheduler_args) \
+        if lr_scheduler_type is not None else None
 
     # - Train
     if args.task == 'train':
         if args.weight_path:
-            runner.load_weights(args.weight_path, optimizer, scheduler)
+            runner.load_weights(args.weight_path, optimizer, lr_scheduler)
             logging.info(f"Resumed from {args.weight_path}.")
         logging.info("Start training...")
         if args.no_eval_when_training:
-            runner.train(optimizer, train_dataset, scheduler)
+            runner.train(optimizer, train_dataset, lr_scheduler)
         else:
-            runner.train(optimizer, train_dataset, scheduler, eval_dataset)
+            runner.train(optimizer, train_dataset, lr_scheduler, eval_dataset)
         logging.info("Training completed.")
 
     # - Evaluate
