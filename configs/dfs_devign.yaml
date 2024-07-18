@@ -26,12 +26,11 @@ optimizer:
     lr: 0.0005
     weight_decay: 0.0
     eps: 0.00000001
-train:
-    batch_size: 128
+runner:
+    train_batch_size: 128
+    eval_batch_size: 128
     epochs: 30
     save_per_steps: -1
     log_per_steps: -1
     max_grad_norm: 1.0
-eval:
-    batch_size: 128
 seed: 42

@@ -1,22 +1,19 @@
-import csv
-import datetime
 import os
 import os.path as osp
+import time
+import datetime
+import csv
 import shutil
 import signal
 import subprocess
-import time
 
 import numpy as np
-import pandas as pd
 
+from utils import code_tokenize
 
 # Require joern v0.2.5
-
-SCRIPT_DIR = osp.dirname(osp.realpath(__file__))
-PROJECT_DIR = osp.join(SCRIPT_DIR, '..')
+PROJECT_DIR = osp.realpath(osp.join(osp.dirname(__file__), '..'))
 JOERN_DIR = osp.join(PROJECT_DIR, 'joern')
-TIMEOUT = 3600
 
 NODE_TYPES = [
     'AndExpression',
@@ -89,7 +86,6 @@ NODE_TYPES = [
     'InitializerList',
     'ElseStatement'
 ]
-
 NODE_TYPES_TO_IDS = {
     'AndExpression': 1,
     'Sizeof': 2,
@@ -161,7 +157,6 @@ NODE_TYPES_TO_IDS = {
     'InitializerList': 68,
     'ElseStatement': 69
 }
-
 EDGE_TYPES = [
     'IS_AST_PARENT',
     'IS_CLASS_OF',
@@ -176,7 +171,6 @@ EDGE_TYPES = [
     'IS_FUNCTION_OF_AST',
     'IS_FUNCTION_OF_CFG'
 ]
-
 EDGE_TYPES_TO_IDS = {
     'IS_AST_PARENT': 1,
     'IS_CLASS_OF': 2,
@@ -192,8 +186,10 @@ EDGE_TYPES_TO_IDS = {
     'IS_FUNCTION_OF_CFG': 12
 }
 
+TIMEOUT = 3600
 
-def df2code(dataframe, output_dir, code_tag='func'):
+
+def df2code(dataframe, output_dir, code_tag='code'):
     if not osp.exists(output_dir):
         os.makedirs(output_dir)
     for idx, row in dataframe.iterrows():

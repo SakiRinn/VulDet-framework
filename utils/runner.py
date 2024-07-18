@@ -25,8 +25,16 @@ def get_param_names(func):
 
 class Runner:
 
-    def __init__(self, model, tokenizer,
-                 train_args={}, eval_args={}, output_dir='./outputs'):
+    SUPPORTED_KWARGS = [
+        'train_batch_size',
+        'eval_batch_size',
+        'epochs',
+        'save_per_steps',
+        'log_per_steps',
+        'max_grad_norm',
+    ]
+
+    def __init__(self, model, tokenizer, output_dir='./outputs', **kwargs):
         self.model = model
         self.tokenizer = tokenizer
         self.output_dir = output_dir
@@ -34,10 +42,10 @@ class Runner:
         self.cur_epoch, self.cur_step = 0, 0
         self.local_rank = -1
 
-        for k, v in train_args.items():
+        for k, v in kwargs.items():
+            if k not in self.SUPPORTED_KWARGS:
+                raise TypeError(f"`{k}` is an invalid keyword argument for runner.")
             setattr(self, k, v)
-        for k, v in eval_args.items():
-            setattr(self, 'eval_' + k, v)
 
         date = datetime.now().strftime("%m-%d-%H:%M:%S")
         self.output_dir = os.path.join(self.output_dir, date)
@@ -54,9 +62,9 @@ class Runner:
         ##############################
 
         # Prepare dataset
-        self.batch_size = self.per_gpu_batch_size * max(1, self.n_gpu)
+        self.train_batch_size = self.train_batch_size_per_gpu * max(1, self.n_gpu)
         sampler = RandomSampler(dataset) if self.local_rank == -1 else DistributedSampler(dataset)
-        dataloader = DataLoader(dataset, sampler=sampler, batch_size=self.batch_size,
+        dataloader = DataLoader(dataset, sampler=sampler, batch_size=self.train_batch_size,
                                 num_workers=4, pin_memory=True)
 
         # Set hyperparameters
@@ -89,9 +97,9 @@ class Runner:
         logging.info("***** Running training *****")
         logging.info(f"\tNum examples: {len(dataset)}")
         logging.info(f"\tNum epochs: {self.epochs}")
-        logging.info(f"\tInstantaneous batch size per GPU: {self.per_gpu_batch_size}")
+        logging.info(f"\tInstantaneous batch size per GPU: {self.train_batch_size_per_gpu}")
         logging.info("\tTotal batch size (w. parallel/distributed training): {}".format(
-            self.batch_size * (torch.distributed.get_world_size() if self.local_rank != -1 else 1)))
+            self.train_batch_size * (torch.distributed.get_world_size() if self.local_rank != -1 else 1)))
 
         avg_loss, best_f1 = 0., 0.
         # - Epoch loop
@@ -173,7 +181,7 @@ class Runner:
         ##############################
 
         # Set hyperparameters
-        self.eval_batch_size = self.per_gpu_eval_batch_size * max(1, self.n_gpu)
+        self.eval_batch_size = self.eval_batch_size_per_gpu * max(1, self.n_gpu)
 
         # Prepare model
         self.model.eval()
@@ -282,8 +290,8 @@ class Runner:
             self.n_gpu = 1
             torch.distributed.init_process_group(backend='nccl')
 
-        self.per_gpu_batch_size = self.batch_size // max(self.n_gpu, 1)
-        self.per_gpu_eval_batch_size = self.eval_batch_size // max(self.n_gpu, 1)
+        self.train_batch_size_per_gpu = self.train_batch_size // max(self.n_gpu, 1)
+        self.eval_batch_size_per_gpu = self.eval_batch_size // max(self.n_gpu, 1)
         try:
             self.model = self.model.to(self.device)
         except ValueError:

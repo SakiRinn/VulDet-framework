@@ -1,43 +1,55 @@
 from datetime import datetime
 import logging
-import re
 
 import torch
 import bitsandbytes as bnb
-from peft import (
-    LoraConfig,
-    get_peft_model,
-)
+from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
 
 from utils.metric import Metric
+from utils.tokenize import remove_comments, remove_blank_lines
 
 
-def resize_tokenizer_and_embedding(model, tokenizer,
+def resize_embedding_and_tokenizer(model, tokenizer,
                                    special_tokens_dict: 'dict[str, str]' = {},
                                    custom_tokens: 'list[str]' = []):
     """
+    Use mean initialization.
     NOTE: This is the unoptimized version that may make your embedding size not be divisible by 64.
     """
+    special_tokens_dict = {k: v for k, v in special_tokens_dict.items()
+                           if getattr(tokenizer, k, None) is None}
+
     logging.info("Resizing tokenizer and embedding...")
     logging.info(f"Special tokens dict: {special_tokens_dict}")
     logging.info(f"Custom tokens: {custom_tokens}")
+
+    new_tokens = list(special_tokens_dict.values()) + custom_tokens
+    if len(new_tokens) <= 0:
+        return False
+    logging.info(f"Number of new tokens: {len(new_tokens)}")
+
+    input_embedding = model.get_input_embeddings()
+    input_inits = []
+    for token in new_tokens:
+        token_ids = tokenizer.encode(token, add_special_tokens=False)
+        value = input_embedding(torch.tensor(token_ids)).mean(dim=0, keepdim=True)
+        input_inits.append(value)
+    input_inits = torch.cat(input_inits, dim=0)
+    output_inits = model.get_output_embeddings().weight.data.mean(dim=0, keepdim=True)
 
     if special_tokens_dict:
         tokenizer.add_special_tokens(special_tokens_dict)
     if custom_tokens:
         tokenizer.add_tokens(custom_tokens, special_tokens=True)
-    original_embeddings = model.get_input_embeddings().weight.data
     model.resize_token_embeddings(len(tokenizer))
 
-    new_tokens = list(special_tokens_dict.keys()) + custom_tokens
-    logging.info(f"Number of new tokens: {len(new_tokens)}")
+    new_input_embedding = model.get_input_embeddings().weight.data
+    new_input_embedding[-len(new_tokens):] = input_inits
+    new_output_embedding = model.get_output_embeddings().weight.data
+    new_output_embedding[-len(new_tokens):] = output_inits
 
-    if len(new_tokens) > 0:
-        input_embeddings = model.get_input_embeddings().weight.data
-        output_embeddings = model.get_output_embeddings().weight.data
-        input_embeddings[-len(new_tokens):] = input_embeddings[:-len(new_tokens)].mean(dim=0, keepdim=True)
-        output_embeddings[-len(new_tokens):] = output_embeddings[:-len(new_tokens)].mean(dim=0, keepdim=True)
+    return True
 
 
 def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
@@ -49,7 +61,7 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
         if isinstance(module, clazz):
             names = name.split('.')
             linear_names.add(names[0] if len(names) == 1 else names[-1])
-    if add_lm_head and not "lm_head" in linear_names:
+    if add_lm_head and "lm_head" not in linear_names:
         logging.info("Adding lm_head to lora_module_names")
         linear_names.add("lm_head")
     return list(linear_names)
@@ -57,10 +69,8 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
 
 def train_prompt(sample):
     code = sample['input'].strip()
-    # Remove comments
-    code = re.sub(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)', '', code)
-    # Remove multiple blank lines
-    code = re.sub(r'\s*\n', '\n', code)
+    code = remove_comments(code)
+    code = remove_blank_lines(code)
     prompt = f"### Instruction:\n{sample['instruction']}\n" \
              f"\n### Input:\n{code}\n" \
              f"\n### Output:\n{sample['output']}"
@@ -69,10 +79,8 @@ def train_prompt(sample):
 
 def eval_prompt(sample):
     code = sample['input'].strip()
-    # Remove comments
-    code = re.sub(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)', '', code)
-    # Remove multiple blank lines
-    code = re.sub(r'\s*\n', '\n', code)
+    code = remove_comments(code)
+    code = remove_blank_lines(code)
     prompt = f"### Instruction:\n{sample['instruction']}\n" \
              f"\n### Input:\n{code}\n" \
              f"\n### Output:\n"
@@ -83,16 +91,6 @@ def compute_metrics(preds):
     logits, labels = preds
     metrics = Metric(logits, labels)()
     return metrics
-
-
-def setup_model(model):
-    model.train()
-    model.config.use_cache = False
-    # old_state_dict = model.state_dict
-    # model.state_dict = (lambda self, *_, **__:
-    #                     get_peft_model_state_dict(self, old_state_dict())).__get__(model, type(model))
-    # model = torch.compile(model)
-    return model
 
 
 def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
@@ -131,7 +129,10 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         ],
         modules_to_save=modules_to_save
     )
+
     model = get_peft_model(model, peft_config)
+    # model = torch.compile(model)
+    model.print_trainable_parameters()
 
     train_args = SFTConfig(
         output_dir=output_dir,
@@ -139,7 +140,7 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         # train
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        num_train_epochs=2,
+        num_train_epochs=5,
         warmup_steps=100,
         # max_steps=400,              # override `num_train_epochs`
         # optimize

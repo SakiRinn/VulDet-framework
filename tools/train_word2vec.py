@@ -1,9 +1,13 @@
-import argparse
-import json
-import logging
 import os
 import os.path as osp
+import sys
+import argparse
+import json
+
 from gensim.models import Word2Vec
+
+sys.path.append(osp.realpath(osp.join(osp.dirname(__file__), '..')))
+from utils.tokenize import code_tokenize
 
 
 def train_w2v(sentences, epochs=5, min_count=1, embedding_size=128,

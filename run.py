@@ -47,8 +47,7 @@ def main():
     dataset_args = config['dataset']
     model_args = config['model']
     optimizer_args = config['optimizer']
-    train_args = config['train']
-    eval_args = config['eval']
+    runner_args = config['runner']
     args.seed = config['seed']
     del config
 
@@ -79,8 +78,8 @@ def main():
         torch.distributed.barrier()
 
     # - Runner
-    train_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
-    runner = Runner(model, tokenizer, train_args, eval_args, args.output_dir)
+    runner_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
+    runner = Runner(model, tokenizer, args.output_dir, **runner_args)
     runner.setup_seed(args.seed)
     runner.setup_device(args.no_cuda)
 
@@ -103,8 +102,8 @@ def main():
         scheduler_func = SCHEDULER_TYPES[scheduler_args['type']]
         del optimizer_args['scheduler'], scheduler_args['type']
 
-        steps_per_epoch = math.ceil(len(train_dataset) / train_args['batch_size'])
-        scheduler_args['num_training_steps'] = train_args['epochs'] * steps_per_epoch
+        steps_per_epoch = math.ceil(len(train_dataset) / runner_args['batch_size'])
+        scheduler_args['num_training_steps'] = runner_args['epochs'] * steps_per_epoch
         if scheduler_args['num_warmup_steps'] < 0:      # can be 0
             scheduler_args['num_warmup_steps'] = steps_per_epoch
     else:

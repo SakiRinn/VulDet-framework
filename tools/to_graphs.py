@@ -1,12 +1,14 @@
-import argparse
-import json
 import os
 import os.path as osp
+import sys
+import argparse
+import json
 
 from gensim.models import Word2Vec
 import numpy as np
 import pandas as pd
 
+sys.path.append(osp.realpath(osp.join(osp.dirname(__file__), '..')))
 from utils.graph import df2csv, csv2graph
 
 

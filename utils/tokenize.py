@@ -145,30 +145,23 @@ RESERVED_FUNCS = ['StrNCat', 'getaddrinfo', '_ui64toa', 'fclose', 'pthread_mutex
 PUNCTUATIONS = list('~`!@#$%^&*()-+={[]}|\\;:\'\"<,>.?/')
 
 
-def remove_commit(code):
+def remove_comments(code):
     pattern = re.compile(r'(/\*([^*]|(\*+[^*/]))*\*+/)|(//.*)')
-    code = re.sub(pattern, '', code)
-    return code
+    return re.sub(pattern, '', code)
 
-def to_camelcase(name):
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+def remove_blank_lines(code):
+    pattern = re.compile(r'^\s*[\r\n]+', flags=re.MULTILINE)
+    return re.sub(pattern, '\n', code)
 
-
-def pretrained_tokenize(tokenizer, text, max_size=512):
-    tokens = tokenizer.tokenize(text)[:max_size - 2]
-    tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
-    ids = tokenizer.convert_tokens_to_ids(tokens)
-    pad_len = max_size - len(ids)
-    ids += [tokenizer.pad_token_id] * pad_len
-    return tokens, ids
+def to_camelcase(identifier):
+    temp = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', identifier)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', temp).lower()
 
 
 def code_tokenize(code):
-    # Remove code comments
-    code = remove_commit(code)
-    # Remove newlines & tabs
-    code = re.sub('(\n)|(\\\\n)|(\\\\)|(\\t)|(/)|(\\r)', '', code)
+    # Remove comments & blank lines
+    code = remove_comments(code)
+    code = remove_blank_lines(code)
     # Mix split (characters and words)
     splitter = '\"(.*?)\"| +|(;)|(->)|(&)|(\\*)|(\\()|(==)|(~)|(!=)|(<=)|(>=)|(!)|' \
                '(\\+\\+)|(--)|(\\))|(=)|(\\+)|(\\-)|(\\[)|(\\])|(<)|(>)|(\\.)|({)'
@@ -201,7 +194,7 @@ def symbolic_tokenize(code):
             var_count += 1
         return symbol_table[token]
 
-    code = remove_commit(code)
+    code = remove_comments(code)
     code = re.sub('(\n)|(\\\\n)|(\\\\)|(\\t)|(/)|(\\r)', '', code)
     tokens = [token.strip() for token in nltk.word_tokenize(code) if token.strip() != '']
 

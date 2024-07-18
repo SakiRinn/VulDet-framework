@@ -18,21 +18,23 @@ SCHEDULER_TYPES = {
     'inverse_sqrt': get_inverse_sqrt_schedule,
 }
 
-DEFAULT_PAD_TOKEN = "[PAD]"
-DEFAULT_EOS_TOKEN = "</s>"
-DEFAULT_BOS_TOKEN = "<s>"
-DEFAULT_UNK_TOKEN = "<unk>"
+DEFAULT_TOKENS = {
+    "pad_token": "<pad>",
+    "unk_token": "<unk>",
+    "bos_token": "<s>",
+    "eos_token": "</s>",
+}
 
 
-def get_quantization_config(int_bits=-1):
-    if int_bits == 4:
+def get_quantization_config(bits=-1):
+    if bits == 4:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
             bnb_4bit_use_double_quant=True
         )
-    elif int_bits == 8:
+    elif bits == 8:
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True
         )
@@ -41,8 +43,8 @@ def get_quantization_config(int_bits=-1):
     return bnb_config
 
 
-def load_datasets(dataset_name, validate_split=0.1):
-    dataset = load_dataset(dataset_name)
+def load_datasets(dataset_name_or_path: str, validate_split=0.1):
+    dataset = load_dataset(dataset_name_or_path)
     train_dataset, eval_dataset = dataset.train_test_split(test_size=validate_split).values()
     return train_dataset, eval_dataset
 
@@ -54,7 +56,7 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
 
     try:
         config = AutoConfig.from_pretrained(config_name if config_name else model_name_or_path)
-        config.num_labels = 1       # binary classification
+        # config.num_labels = 1       # binary classification
         config.use_cache = False
     except OSError:                 # Not found
         config = None
@@ -76,6 +78,5 @@ def load_models(model_name_or_path: str, config_name='', tokenizer_name='',
     )
     tokenizer.add_eos_token = True
     tokenizer.padding_side = "left"
-    tokenizer.pad_token_id = 0          # TODO: remove
 
     return config, model, tokenizer

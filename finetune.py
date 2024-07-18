@@ -9,17 +9,11 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, SequentialSampler
 from datasets import Dataset
-from finetune import resize_tokenizer_and_embedding, train_prompt, setup_model, setup_trainer
+from finetune import resize_embedding_and_tokenizer, train_prompt, eval_prompt, setup_trainer
 from peft.peft_model import PeftModel
 
-from finetune.base import eval_prompt
 import utils
-from utils.huggingface import load_models
-
-DEFAULT_PAD_TOKEN = "<pad>"
-DEFAULT_EOS_TOKEN = "</s>"
-DEFAULT_BOS_TOKEN = "<s>"
-DEFAULT_UNK_TOKEN = "<unk>"
+from utils.huggingface import load_models, DEFAULT_TOKENS
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -27,25 +21,14 @@ torch.backends.cudnn.benchmark = True
 
 def train(model_name_or_path):
     custom_tokens = []
-    special_tokens_dict = {}
 
     _, model, tokenizer = load_models(model_name_or_path, bits=8)
     train_dataset = Dataset.from_json('data/devign/train.json').map(train_prompt)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(train_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
-    if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
-    if tokenizer.eos_token is None:
-        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
-    if tokenizer.bos_token is None:
-        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
-    if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
-    if special_tokens_dict or custom_tokens:
-        resize_tokenizer_and_embedding(model, tokenizer, special_tokens_dict, custom_tokens)
+    resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
-    model = setup_model(model)
     model.train()
     model.enable_input_require_grads()
     trainer = setup_trainer(model, tokenizer, train_dataset, eval_dataset)
@@ -54,25 +37,14 @@ def train(model_name_or_path):
 
 def eval(model_name_or_path):
     custom_tokens = []
-    special_tokens_dict = {}
     max_length = 2048
 
     _, model, tokenizer = load_models(model_name_or_path, bits=8)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(eval_prompt)
 
     custom_tokens = [token.strip() for token in custom_tokens]
-    if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
-    if tokenizer.eos_token is None:
-        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
-    if tokenizer.bos_token is None:
-        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
-    if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
-    if special_tokens_dict or custom_tokens:
-        resize_tokenizer_and_embedding(model, tokenizer, special_tokens_dict, custom_tokens)
+    resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
-    model = setup_model(model)
     model.eval()
 
     dataset = eval_dataset.with_format('torch')
@@ -117,6 +89,8 @@ def eval(model_name_or_path):
 
 
 def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
+    custom_tokens = []
+
     lora_dir = osp.realpath(lora_dir)
     output_dir = osp.realpath(output_dir)
 
@@ -131,20 +105,8 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
 
     _, base_model, tokenizer = load_models(base_model, bits=8)
 
-    custom_tokens = []
-    special_tokens_dict = {}
-
     custom_tokens = [token.strip() for token in custom_tokens]
-    if tokenizer.pad_token is None:
-        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
-    if tokenizer.eos_token is None:
-        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
-    if tokenizer.bos_token is None:
-        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
-    if tokenizer.unk_token is None:
-        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
-    if special_tokens_dict or custom_tokens:
-        resize_tokenizer_and_embedding(base_model, tokenizer, special_tokens_dict, custom_tokens)
+    resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
     model = PeftModel.from_pretrained(
         base_model,
@@ -164,8 +126,8 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
 
 if __name__ == "__main__":
     utils.Runner.setup_seed(114514)
-    # train('meta-llama/Meta-Llama-3-8B')
-    # lora_merge('saved_models/lora-07-17-03-54-57/checkpoint-3642',
-    #            'meta-llama/Meta-Llama-3-8B',
+    train('meta-llama/Llama-2-7b-hf')
+    # lora_merge('saved_models/lora-07-17-02-59-11/checkpoint-3642',
+    #            'meta-llama/Llama-2-7b-hf',
     #            '/root/autodl-tmp/llama-3-merged')
-    eval('/root/autodl-tmp/llama-3-merged')
+    # eval('/root/autodl-tmp/llama-3-merged')
