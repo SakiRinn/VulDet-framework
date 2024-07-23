@@ -5,8 +5,8 @@ class:
 dataset:
     file_path: <YOUR_PATH>
     file_type: 'json'
-    code_tag: 'func'
-    label_tag: 'target'
+    code_field: 'func'
+    label_field: 'target'
     validate_split: 0.2
 model:
     transformer:

@@ -1,6 +1,8 @@
 import argparse
-import inspect
+from datetime import datetime
 import logging
+import os
+import os.path as osp
 import math
 
 import torch
@@ -8,21 +10,16 @@ import yaml
 
 import dataloaders
 import models
+import utils
 from utils import Runner
 from utils.huggingface import SCHEDULER_TYPES, load_transformers
-
-
-def get_classes(module):
-    members = inspect.getmembers(module)
-    classes = {member[0]: member[1] for member in members if inspect.isclass(member[1])}
-    return classes
 
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
     parser.add_argument("config", type=str, help="Path to the YAML file used to set hyperparameters.")
-    parser.add_argument("--output-dir", default="./outputs", type=str,
+    parser.add_argument("--output-dir", default="", type=str,
                         help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--weight-path", type=str,
                         help="The weight file (.pt) saved during training. if train, it's used for resumption.")
@@ -51,24 +48,32 @@ def main():
     args.seed = config['seed']
     del config
 
+    # Default output directory
+    if args.output_dir == "":
+        date = datetime.now().strftime("%m-%d-%H:%M:%S")
+        output_dir = osp.join('./outputs', date)
+        if not osp.exists(output_dir):
+            os.makedirs(output_dir)
+    else:
+        output_dir = args.output_dir
+
     # Get classes
     try:
-        model_class = get_classes(models)[args.model]
+        model_class = utils.get_classes(models)[args.model]
     except KeyError:
         raise KeyError(f"Unsupported model class: {args.model}!")
     try:
-        dataset_class = get_classes(dataloaders)[args.dataset]
+        dataset_class = utils.get_classes(dataloaders)[args.dataset]
     except KeyError:
         raise KeyError(f"Unsupported dataset class: {args.dataset}!")
     try:
-        optimizer_class = get_classes(torch.optim)[args.optimizer]
+        optimizer_class = utils.get_classes(torch.optim)[args.optimizer]
     except KeyError:
         raise KeyError(f"Unsupported optimizer class: {args.optimizer}!")
 
     # - Model
     if 'transformer' in model_args.keys():
-        config, transformer, tokenizer = load_transformers(**model_args['transformer'])
-        del model_args['transformer']
+        config, transformer, tokenizer = load_transformers(**model_args.pop('transformer'))
         model = model_class(transformer, config, tokenizer, **model_args)
     else:
         model = model_class(config, tokenizer, **model_args)
@@ -79,9 +84,8 @@ def main():
 
     # - Runner
     runner_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
-    runner = Runner(model, tokenizer, args.output_dir, **runner_args)
+    runner = Runner(model, tokenizer, output_dir, args.no_cuda, **runner_args)
     runner.setup_seed(args.seed)
-    runner.setup_device(args.no_cuda)
 
     logging.info('***** Basic information *****')
     logging.info(f"\tConfig: {args.config}")
@@ -98,9 +102,8 @@ def main():
 
     # - Optimizer & scheduler
     if 'lr_scheduler' in optimizer_args.keys():
-        lr_scheduler_args = optimizer_args['lr_scheduler']
-        lr_scheduler_type = SCHEDULER_TYPES[lr_scheduler_args['type']]
-        del optimizer_args['lr_scheduler'], lr_scheduler_args['type']
+        lr_scheduler_args = optimizer_args.pop('lr_scheduler')
+        lr_scheduler_type = SCHEDULER_TYPES[lr_scheduler_args.pop('type')]
 
         steps_per_epoch = math.ceil(len(train_dataset) / runner_args['batch_size'])
         lr_scheduler_args['num_training_steps'] = runner_args['epochs'] * steps_per_epoch
@@ -112,11 +115,10 @@ def main():
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-         'weight_decay': optimizer_args['weight_decay']},
+         'weight_decay': optimizer_args.pop('weight_decay')},
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
          'weight_decay': 0.0}
     ]
-    del optimizer_args['weight_decay']
     optimizer = optimizer_class(optimizer_grouped_parameters, **optimizer_args)
     lr_scheduler = lr_scheduler_type(optimizer, **lr_scheduler_args) \
         if lr_scheduler_type is not None else None

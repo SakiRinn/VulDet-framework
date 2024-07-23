@@ -42,22 +42,23 @@ class TextDataset(BaseDataset):
         'draper',
     ]
 
-    def __init__(self, file_path, is_train=False, validate_split=1.,
-                 file_type=None, code_tag='code', label_tag='label'):
+    def __init__(self, file_path, file_type=None, validate_split=1.,
+                 code_field='code', label_field='label', is_train=False):
         file_path = osp.realpath(file_path)
         if file_type is None:
             file_type = file_path.split("/")[-1].split(".")[1]
         if file_type not in self.SUPPORTED_TYPES:
             raise TypeError(f"`{file_type}` is an unsupported file type for text dataset.")
+
         self.load = partial(getattr(self, 'load_' + file_type),
-                            code_tag=code_tag, label_tag=label_tag)
+                            code_field=code_field, label_field=label_field)
         super().__init__(file_path, is_train, validate_split)
 
     def __getitem__(self, idx):
         return self.data[idx].text, torch.tensor(self.data[idx].label)
 
     @staticmethod
-    def load_json(file_path, code_tag='code', label_tag='label'):
+    def load_json(file_path, code_field='code', label_field='label'):
         # Read
         with open(file_path, 'r') as f:
             raw_data = json.load(f)
@@ -65,20 +66,16 @@ class TextDataset(BaseDataset):
         data = []
         for i, e in enumerate(raw_data):
             # code = ' '.join(e[code_tag].split())
-            code = e[code_tag]
-            label = e[label_tag]
+            code = e[code_field]
+            label = e[label_field]
             entry = TextEntry(i, code, label)
             data.append(entry)
         return data
 
     @staticmethod
-    def load_draper(file_path, code_tag='code', label_tag='label'):
+    def load_draper(file_path, code_field='functionSource'):
         # Read
         with h5py.File(file_path, 'r') as f:
             raw_data = hdf5_to_dict(f)
         # Preprocess
-        data = []
-        codes, labels = raw_data[code_tag], labels[label_tag]
-        for i, (code, label) in enumerate(zip(codes, labels)):
-            entry = TextEntry(i, code, label)
-            data.append(entry)
+        ...

@@ -1,0 +1,28 @@
+dataset:
+    # Format 1, `validate_split` must be filled in.
+    file_path: str
+    # Format 2, best to left `validate_split` as the default.
+    file_path:
+        train: str
+        eval: str
+    file_type: ['json']
+    validate_split: <optional> float [>0.0, <1.0]
+transformer:
+    model_name_or_path: str
+    config_name: <optional> str
+    tokenizer_name: <optional> str
+    do_lower_case: <optional> [True, False]
+    bits: <optional> [4, 8]
+peft:
+    type: str
+    task: str
+    kwargs...: ...
+    # If `task` == 'lora', then
+    long_lora: <optional> [True, False]     # override `modules_to_save`
+    all_linear: <optional> [True, False]
+runner:
+    train_batch_size: int                   # NECESSARY, override `per_devive_train_batch_size`
+    eval_batch_size: int                    # NECESSARY, override `per_devive_eval_batch_size`
+    num_train_epochs: int
+    max_seq_length: <optional> int
+    kwargs...: ...

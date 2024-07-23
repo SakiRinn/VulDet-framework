@@ -5,8 +5,8 @@ class:
 dataset:
     file_path: <YOUR_PATH>
     file_type: 'json'
-    code_tag: 'code'
-    label_tag: 'label'
+    code_field: 'code'
+    label_field: 'label'
     validate_split: 0.2
 model:
     transformer:

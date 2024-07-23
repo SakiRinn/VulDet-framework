@@ -1,13 +1,19 @@
 class:
-    dataset: ClassName          # in `./dataloaders/__init__.py`
-    model: ClassName            # in `./models/__init__.py`
-    optimizer: ClassName        # in `torch.optim`
+    dataset: ['TextDataset', 'GraphDataset']
+    model: ['DevignForSequence', 'ReGVD']
+    optimizer: str          # ClassName in `torch.optim`
 dataset:
+    # Format 1, `validate_split` must be filled in.
     file_path: str
+    # Format 2, best to left `validate_split` as the default.
+    file_path:
+        train: str
+        eval: str
     file_type: ['json', 'draper']
-    code_tag: <optional>
-    label_tag: <optional>
     validate_split: <optional> float [>0.0, <1.0]
+    # If `file_type` == 'json', then
+    code_field: str
+    label_field: str
 model:
     transformer:                # Optional
         model_name_or_path: str
@@ -15,15 +21,18 @@ model:
         tokenizer_name: <optional> str
         do_lower_case: <optional> [True, False]
         bits: <optional> [4, 8]
-    kwargs: ...
+    kwargs...: ...
 optimizer:
     lr_scheduler:               # Optional
         type: ['linear', 'cosine', 'polymonial', 'constant', 'inverse_sqrt']
-        kwargs: ...
-    kwargs: ...
+        kwargs...: ...
+    kwargs...: ...
 runner:
+    output_dir: <optional> str
     train_batch_size: int
     eval_batch_size: int
-    epochs: int
-    kwargs: ...
+    num_train_epochs: int
+    save_steps: <optional> int
+    logging_steps: <optional> int
+    max_grad_norm: <optional> float
 seed: <optional> int
