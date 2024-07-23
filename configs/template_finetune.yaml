@@ -23,6 +23,5 @@ peft:
 runner:
     train_batch_size: int                   # NECESSARY, override `per_devive_train_batch_size`
     eval_batch_size: int                    # NECESSARY, override `per_devive_eval_batch_size`
-    num_train_epochs: int
     max_seq_length: <optional> int
     kwargs...: ...

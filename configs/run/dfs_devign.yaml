@@ -26,6 +26,6 @@ optimizer:
 runner:
     train_batch_size: 128
     eval_batch_size: 128
-    epochs: 30
+    num_train_epochs: 30
     max_grad_norm: 1.0
 seed: 42

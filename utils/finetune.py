@@ -45,6 +45,7 @@ def resize_embedding_and_tokenizer(model, tokenizer,
     new_output_embedding = model.get_output_embeddings().weight.data
     new_output_embedding[-len(new_tokens):] = output_inits
 
+    model.is_resized = True
     return True
 
 

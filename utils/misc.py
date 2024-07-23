@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import inspect
+import logging
 import warnings
 
 
@@ -33,4 +34,4 @@ class WarningCounter:
     def _showwarning(self, message, category, filename, lineno, file=None, line=None):
         if self.match_text in str(message):
             self.count += 1
-            print(f'({self.count}) {self.custom_message}')
+            logging.warn(f'({self.count}) {self.custom_message}')

@@ -14,7 +14,7 @@ from datasets import Dataset
 from peft.peft_model import PeftModel
 
 import utils
-from utils.llm import find_all_linear_names, resize_embedding_and_tokenizer, train_prompt, eval_prompt
+from utils.finetune import find_all_linear_names, resize_embedding_and_tokenizer, train_prompt, eval_prompt
 from utils.huggingface import load_transformers, DEFAULT_TOKENS
 
 from peft import LoraConfig, get_peft_model
@@ -30,10 +30,9 @@ torch.backends.cudnn.benchmark = True
 
 def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
                   long_lora=False, is_resized=False, all_linear=False):
-    # output_dir = f"saved_models/lora-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
-    output_dir = "saved_models/lora-07-19-06-52-44/checkpoint-9040"
-    batch_size = 12
-    per_device_train_batch_size = 6
+    output_dir = f"saved_models/llama3-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
+    batch_size = 8
+    per_device_train_batch_size = 4
     gradient_accumulation_steps = batch_size // per_device_train_batch_size
 
     target_modules = None
@@ -69,12 +68,6 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
     if torch.cuda.device_count() > 1:
         model.is_parallelizable = True
         model.model_parallel = True
-    # just make training faster but don't affect accuracy
-    old_state_dict = model.state_dict
-    model.state_dict = (lambda self, *_, **__:
-        get_peft_model_state_dict(self, old_state_dict())).__get__(
-            model, type(model))
-
 
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
@@ -85,13 +78,13 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         # train
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        num_train_epochs=5,
-        warmup_steps=100,
+        num_train_epochs=2,
         # max_steps=400,              # override `num_train_epochs`
         # optimize
         optim="adamw_bnb_8bit",     # adamw_torch & adamw_bnb_8bit
         learning_rate=3e-4,
         lr_scheduler_type="linear",
+        warmup_steps=100,
         weight_decay=0.,
         # eval
         # eval_strategy="steps",
@@ -107,7 +100,7 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         # dataset
         dataset_text_field="text",
         dataloader_drop_last=True,
-        group_by_length=True,
+        group_by_length=False,
         # dtype
         bf16=True if torch.cuda.is_bf16_supported() else False,
         fp16=False if torch.cuda.is_bf16_supported() else True,
@@ -115,7 +108,7 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
         gradient_checkpointing=True,
         # report
         report_to="tensorboard",        # wandb
-        run_name=f"lora-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
+        run_name=f"finetune-{datetime.now().strftime('%m-%d-%H-%M-%S')}"
     )
     trainer = SFTTrainer(
         model=model,
@@ -133,10 +126,9 @@ def setup_trainer(model, tokenizer, train_dataset, eval_dataset,
     return trainer
 
 
-
 def train(model_name_or_path):
     resume_from_checkpoint = None
-    custom_tokens = []
+    custom_tokens = ['[VULNERABLE]', '[BENIGN]']
 
     custom_tokens = [token.strip() for token in custom_tokens]
     if osp.exists(model_name_or_path):
@@ -171,9 +163,9 @@ def train(model_name_or_path):
 
 
 def eval(model_name_or_path):
-    custom_tokens = []
+    custom_tokens = ['[VULNERABLE]', '[BENIGN]']
     max_length = 2048
-    lora_dir = 'saved_models/lora-07-19-06-52-44/checkpoint-9105'
+    lora_dir = ''
 
     _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(eval_prompt)
@@ -195,7 +187,7 @@ def eval(model_name_or_path):
         dataset,
         sampler=SequentialSampler(dataset),
         batch_size=6,
-        num_workers=4,
+        num_workers=8,
         pin_memory=True)
 
     preds, labels = [], []
@@ -269,8 +261,8 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
 
 if __name__ == "__main__":
     utils.Runner.setup_seed(114514)
-    train('meta-llama/Llama-2-7b-hf')
+    train('meta-llama/Meta-Llama-3-8B')
     # lora_merge('saved_models/lora-07-19-06-52-44/checkpoint-9105',
     #            'meta-llama/Llama-2-7b-hf',
     #            '/root/autodl-tmp/llama-3-merged')
-    # eval('meta-llama/Llama-2-7b-hf')
+    # eval('meta-llama/Meta-Llama-3-8B')

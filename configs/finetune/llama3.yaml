@@ -20,11 +20,11 @@ peft:
         - "v_proj"
         - "o_proj"
 runner:
-    train_batch_size: 6
-    eval_batch_size: 6
+    train_batch_size: 4
+    eval_batch_size: 4
     max_seq_length: 2048
     # train
-    num_train_epochs: 5
+    num_train_epochs: 2
     gradient_accumulation_steps: 2
     gradient_checkpointing: True
     # optimize

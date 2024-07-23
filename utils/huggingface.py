@@ -8,6 +8,7 @@ from transformers import (get_linear_schedule_with_warmup,
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers import BitsAndBytesConfig
 from peft import prepare_model_for_kbit_training
+from peft.utils.peft_types import TaskType
 
 
 SCHEDULER_TYPES = {
@@ -17,6 +18,7 @@ SCHEDULER_TYPES = {
     'constant': get_constant_schedule,
     'inverse_sqrt': get_inverse_sqrt_schedule,
 }
+PEFT_TASK_TYPES = [t.value for t in list(TaskType)]
 
 DEFAULT_TOKENS = {
     "pad_token": "<pad>",

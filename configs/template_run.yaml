@@ -28,7 +28,6 @@ optimizer:
         kwargs...: ...
     kwargs...: ...
 runner:
-    output_dir: <optional> str
     train_batch_size: int
     eval_batch_size: int
     num_train_epochs: int

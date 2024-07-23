@@ -1,9 +1,7 @@
 import os
-import os.path as osp
 from abc import ABCMeta, abstractmethod
 import logging
 import random
-import json
 from datetime import datetime
 from tqdm import tqdm
 import numpy as np
@@ -14,12 +12,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler, DistributedSampler
 from transformers.modeling_outputs import ModelOutput
 import peft
-from peft import get_peft_model_state_dict, get_peft_model, PeftModel, PeftConfig
+from peft import get_peft_model, PeftModel, PeftConfig
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
 import utils
-from utils.huggingface import DEFAULT_TOKENS, load_transformers
-from utils.llm import find_all_linear_names, resize_embedding_and_tokenizer
+from utils.finetune import find_all_linear_names
+from utils.huggingface import PEFT_TASK_TYPES
 
 
 class BaseRunner(metaclass=ABCMeta):
@@ -375,43 +373,45 @@ class FinetuneRunner(BaseRunner):
         'max_seq_length'
     ]
 
-    def __init__(self, base_model, tokenizer,
+    def __init__(self, model, tokenizer,
                  output_dir='./finetune_outputs', no_cuda=False,
-                 custom_tokens=[], peft_args={}, **kwargs):
+                 peft_args={}, **kwargs):
         peft_config = peft_args.pop('type', PeftConfig).strip().capitalize() + 'Config'
         self.peft_config = utils.get_classes(peft.tuners)[peft_config]
-        self.peft_task = peft_args.pop('task', PeftConfig)
+        self.peft_task = peft_args.pop('task', PeftConfig).strip().upper()
+        if self.peft_task not in PEFT_TASK_TYPES:
+            raise ValueError(f"Peft task `{self.peft_task}`is unsupported!\n"
+                             f"Supported peft tasks: {PEFT_TASK_TYPES}")
         self.peft_args = peft_args
 
-        self.max_seq_length = kwargs.pop('max_seq_length', None)
-        self.kwargs = kwargs
+        original_keys = kwargs.keys()
+        self.train_args = {k: kwargs.pop(k) for k in original_keys
+                           if k in utils.get_param_names(SFTConfig)}
 
-        super().__init__(base_model, tokenizer, output_dir, **kwargs)
+        super().__init__(model, tokenizer, output_dir, **kwargs)
         self.setup_device(no_cuda)
         self.setup_logger()
 
-        self.custom_tokens = [token.strip() for token in custom_tokens]
-        self.is_resized = resize_embedding_and_tokenizer(
-            self.model, self.tokenizer, DEFAULT_TOKENS, self.custom_tokens)
-
     def train(self, dataset, eval_dataset=None, resume_from_checkpoint=None):
         self.model.train()
-        self.model.enable_input_require_grads()
+        is_resized = getattr(self.model, 'is_resized', False)
+        if self.train_args['gradient_checkpointing']:
+            self.model.enable_input_require_grads()
 
         target_modules = None
         if self.all_linear:
             target_modules = find_all_linear_names(self.model)
-            if self.is_resized:
+            if is_resized:
                 # Removing lm_head from target modules, will use in modules_to_save
                 target_modules.pop(target_modules.index("lm_head"))
 
         if self.long_lora:
             modules_to_save = ["embed_tokens", "input_layernorm",
                                "post_attention_layernorm", "norm"]
-            if self.is_resized:
+            if is_resized:
                 modules_to_save += ["lm_head"]
             self.peft_args['modules_to_save'] = modules_to_save
-        elif self.is_resized:
+        elif is_resized:
             modules_to_save = self.peft_args.get('modules_to_save', []) + \
                 ["embed_tokens", "lm_head"]
             self.peft_args['modules_to_save'] = list(set(modules_to_save))
@@ -431,19 +431,17 @@ class FinetuneRunner(BaseRunner):
         if self.n_gpu > 1:
             peft_model.is_parallelizable = True
             peft_model.model_parallel = True
-        # Make training faster but don't affect accuracy
-        old_state_dict = peft_model.state_dict
-        peft_model.state_dict = (lambda self, *_, **__:
-            get_peft_model_state_dict(self, old_state_dict())).__get__(
-                peft_model, type(peft_model))
 
+        gradient_accumulation_steps = self.n_gpu * \
+            self.train_args.pop('gradient_accumulation_steps', 1)
         train_args = SFTConfig(
             do_train=True,
             output_dir=self.output_dir,
             # run
             per_device_train_batch_size=self.per_device_train_batch_size,
             per_device_eval_batch_size=self.per_device_eval_batch_size,
-            gradient_accumulation_steps=self.n_gpu,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            gradient_checkpointing=True,
             # data
             dataset_text_field="text",
             bf16=True if torch.cuda.is_bf16_supported() else False,
@@ -452,7 +450,7 @@ class FinetuneRunner(BaseRunner):
             report_to="tensorboard",
             run_name=f"finetune_{datetime.now().strftime('%m-%d-%H:%M:%S')}",
             # others
-            **self.kwargs
+            **self.train_args
         )
 
         trainer = SFTTrainer(
@@ -519,17 +517,18 @@ class FinetuneRunner(BaseRunner):
     def inference(self, prompt):
         ...
 
-    def merge_and_save(self, save_dir=None, checkpoint_dir=None):
+    def merge_and_save(self, dirname, peft_dir=None):
         if isinstance(self.model, PeftModel):
             peft_model = self.model
         else:
-            assert checkpoint_dir is not None
+            assert peft_dir is not None
             peft_model = PeftModel.from_pretrained(
                 self.model,
-                checkpoint_dir,
+                peft_dir,
                 torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
                 device_map="auto"
             )
+        save_dir = os.path.join(self.output_dir, dirname)
 
         logging.info("Merging model...")
         peft_model = peft_model.merge_and_unload()
