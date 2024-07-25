@@ -1,23 +1,21 @@
-import os
 from abc import ABCMeta, abstractmethod
-import logging
-import random
 from datetime import datetime
-from tqdm import tqdm
+import logging
 import numpy as np
+import os
+import random
+from numpy.ma import count
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler, DistributedSampler
 from transformers.modeling_outputs import ModelOutput
-import peft
-from peft import get_peft_model, PeftModel, PeftConfig
+from peft import get_peft_model, PeftModel
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
 import utils
-from utils.finetune import find_all_linear_names
-from utils.huggingface import PEFT_TASK_TYPES
 
 
 class BaseRunner(metaclass=ABCMeta):
@@ -36,6 +34,8 @@ class BaseRunner(metaclass=ABCMeta):
             if k not in self.SUPPORTED_KWARGS:
                 raise TypeError(f"`{k}` is an invalid keyword argument for runner.")
             setattr(self, k, v)
+
+        self.setup_device(not torch.cuda.is_available())
 
     @abstractmethod
     def train(self):
@@ -58,33 +58,36 @@ class BaseRunner(metaclass=ABCMeta):
         torch.cuda.manual_seed(seed)
         torch.backends.cudnn.deterministic = True
 
-    def setup_logger(self, filename='runner.log'):
+    def setup_logger(self, filename='runner.log', log_level=logging.INFO):
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
                                       datefmt='%m/%d/%Y %H:%M:%S')
         # To stderr
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)
         console_handler.setFormatter(formatter)
         # To file
         file_handler = logging.FileHandler(os.path.join(self.output_dir, filename))
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         # logger
         logger = logging.getLogger()
-        logger.setLevel(logging.INFO if self.local_rank in [-1, 0] else logging.WARN)
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
+        logger.setLevel(log_level if getattr(self, 'local_rank', -1) in [-1, 0]
+                        else min(logging.WARN, log_level + 10))
+        logger.handlers = [console_handler, file_handler]
 
     def setup_device(self, no_cuda=False):
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
 
         self.device = torch.device("cpu" if no_cuda else "cuda")
-        self.n_gpu = torch.cuda.device_count()
+        self.n_gpu = 1 if no_cuda else torch.cuda.device_count()
 
         self.per_device_train_batch_size = self.train_batch_size // max(self.n_gpu, 1)
         self.per_device_eval_batch_size = self.eval_batch_size // max(self.n_gpu, 1)
-        self.model = self.model.to(self.device)
+        try:
+            self.model = self.model.to(self.device)
+        except ValueError:      # bitsandbytes
+            pass
 
 
 class Runner(BaseRunner):
@@ -98,14 +101,10 @@ class Runner(BaseRunner):
         'max_grad_norm',
     ]
 
-    def __init__(self, model, tokenizer,
-                 output_dir='./run_outputs', no_cuda=False, **kwargs):
+    def __init__(self, model, tokenizer, output_dir='./run_outputs', **kwargs):
         super().__init__(model, tokenizer, output_dir, **kwargs)
         self.cur_epoch, self.cur_step = 0, 0
         self.local_rank = -1
-
-        self.setup_device(no_cuda)
-        self.setup_logger()
 
     def train(self, optimizer, dataset, lr_scheduler=None, eval_dataset=None):
 
@@ -132,8 +131,10 @@ class Runner(BaseRunner):
             try:
                 from apex import amp
             except ImportError:
-                raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
-            self.model, optimizer = amp.initialize(self.model, optimizer, opt_level=self.fp16_opt_level)
+                raise ImportError(
+                    "Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+            self.model, optimizer = amp.initialize(
+                self.model, optimizer, opt_level=self.fp16_opt_level)
 
         # Parallel training (optional)
         # NOTE: should be after apex fp16 initialization.
@@ -317,7 +318,8 @@ class Runner(BaseRunner):
             self.device = torch.device("cpu" if no_cuda else "cuda")
             self.n_gpu = torch.cuda.device_count()
         else:
-            # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+            # Initializes the distributed backend which will take care of sychronizing
+            # nodes/GPUs
             torch.cuda.set_device(self.local_rank)
             self.device = torch.device("cuda", self.local_rank)
             self.n_gpu = 1
@@ -356,13 +358,15 @@ class Runner(BaseRunner):
                 optimizer.load_state_dict(weights['optimizer'])
                 logging.info("Success to load optimizer's weights.")
             except TypeError:
-                logging.warning(f"Fail to load optimizer's weights! They are not in {weight_path}.")
+                logging.warning(
+                    f"Fail to load optimizer's weights! They are not in {weight_path}.")
         if scheduler is not None:
             try:
                 scheduler.load_state_dict(weights['scheduler'])
                 logging.info("Success to load scheduler's weights.")
             except TypeError:
-                logging.warning(f"Fail to load scheduler's weights! They are not in {weight_path}.")
+                logging.warning(
+                    f"Fail to load scheduler's weights! They are not in {weight_path}.")
 
 
 class FinetuneRunner(BaseRunner):
@@ -373,57 +377,23 @@ class FinetuneRunner(BaseRunner):
         'max_seq_length'
     ]
 
-    def __init__(self, model, tokenizer,
-                 output_dir='./finetune_outputs', no_cuda=False,
-                 peft_args={}, **kwargs):
-        peft_config = peft_args.pop('type', PeftConfig).strip().capitalize() + 'Config'
-        self.peft_config = utils.get_classes(peft.tuners)[peft_config]
-        self.peft_task = peft_args.pop('task', PeftConfig).strip().upper()
-        if self.peft_task not in PEFT_TASK_TYPES:
-            raise ValueError(f"Peft task `{self.peft_task}`is unsupported!\n"
-                             f"Supported peft tasks: {PEFT_TASK_TYPES}")
-        self.peft_args = peft_args
-
-        original_keys = kwargs.keys()
-        self.train_args = {k: kwargs.pop(k) for k in original_keys
-                           if k in utils.get_param_names(SFTConfig)}
-
+    def __init__(self, model, tokenizer, output_dir='./finetune_outputs', **kwargs):
+        self.max_seq_length = kwargs.pop('max_seq_length',
+                                         min(tokenizer.model_max_length, 1024))
+        train_keys = [k for k in kwargs.keys() if k in utils.get_param_names(SFTConfig)]
+        self.train_args = {k: kwargs[k] for k in train_keys}
+        kwargs = dict(set(kwargs.items()) - set(self.train_args.items()))
         super().__init__(model, tokenizer, output_dir, **kwargs)
-        self.setup_device(no_cuda)
-        self.setup_logger()
 
-    def train(self, dataset, eval_dataset=None, resume_from_checkpoint=None):
+    def train(self, dataset, peft_config=None, eval_dataset=None, resume_from_checkpoint=None):
         self.model.train()
-        is_resized = getattr(self.model, 'is_resized', False)
         if self.train_args['gradient_checkpointing']:
             self.model.enable_input_require_grads()
-
-        target_modules = None
-        if self.all_linear:
-            target_modules = find_all_linear_names(self.model)
-            if is_resized:
-                # Removing lm_head from target modules, will use in modules_to_save
-                target_modules.pop(target_modules.index("lm_head"))
-
-        if self.long_lora:
-            modules_to_save = ["embed_tokens", "input_layernorm",
-                               "post_attention_layernorm", "norm"]
-            if is_resized:
-                modules_to_save += ["lm_head"]
-            self.peft_args['modules_to_save'] = modules_to_save
-        elif is_resized:
-            modules_to_save = self.peft_args.get('modules_to_save', []) + \
-                ["embed_tokens", "lm_head"]
-            self.peft_args['modules_to_save'] = list(set(modules_to_save))
 
         if isinstance(self.model, PeftModel):
             peft_model = self.model
         else:
-            peft_config = self.peft_config(
-                task_type=self.peft_task,
-                modules_to_save=modules_to_save,
-                **self.peft_args
-            )
+            assert peft_config is not None
             peft_model = get_peft_model(self.model, peft_config)
         peft_model.print_trainable_parameters()
 
@@ -441,7 +411,6 @@ class FinetuneRunner(BaseRunner):
             per_device_train_batch_size=self.per_device_train_batch_size,
             per_device_eval_batch_size=self.per_device_eval_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            gradient_checkpointing=True,
             # data
             dataset_text_field="text",
             bf16=True if torch.cuda.is_bf16_supported() else False,
@@ -488,21 +457,31 @@ class FinetuneRunner(BaseRunner):
             pin_memory=True
         )
 
+        num = 0
         preds, labels = [], []
+
         with torch.no_grad():
             for batch in tqdm(dataloader):
-                len_filter = [i for i, t in enumerate(batch['text']) if len(t) < self.max_seq_length]
+                len_filter = [i for i, t in enumerate(batch['text'])
+                              if len(t) < self.max_seq_length]
                 label = np.array([1 if 'VULNERABLE' in t else 0
-                                  for t in batch['output']])[len_filter]
+                                 for t in batch['output']])[len_filter]
 
                 input_texts = [t for t in batch['text'] if len(t) < self.max_seq_length]
+                if not input_texts:
+                    continue
                 inputs = self.tokenizer(input_texts, return_tensors="pt",
                                         truncation=True, padding=True).to('cuda')
-                outputs = model.generate(**inputs, max_new_tokens=16)
+                outputs = model.generate(**inputs, max_new_tokens=1)
                 output_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
                 pred_texts = [t.split("### Output:\n")[1].strip() for t in output_texts]
                 pred = np.array([1 if 'VULNERABLE' in t else 0 for t in pred_texts])
+
+                for t, l in zip(pred_texts, label):
+                    lt = "[VULNERABLE]" if l else "[BENIGN]"
+                    num += 1
+                    logging.info(f'### ({num}) Output: {t} / {lt}')
 
                 preds.append(pred)
                 labels.append(label)

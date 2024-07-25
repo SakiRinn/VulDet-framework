@@ -37,15 +37,13 @@ def resize_embedding_and_tokenizer(model, tokenizer,
     if special_tokens_dict:
         tokenizer.add_special_tokens(special_tokens_dict)
     if custom_tokens:
-        tokenizer.add_tokens(custom_tokens, special_tokens=True)
+        tokenizer.add_tokens(custom_tokens, special_tokens=False)
     model.resize_token_embeddings(len(tokenizer))
 
     new_input_embedding = model.get_input_embeddings().weight.data
     new_input_embedding[-len(new_tokens):] = input_inits
     new_output_embedding = model.get_output_embeddings().weight.data
     new_output_embedding[-len(new_tokens):] = output_inits
-
-    model.is_resized = True
     return True
 
 

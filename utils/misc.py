@@ -35,3 +35,5 @@ class WarningCounter:
         if self.match_text in str(message):
             self.count += 1
             logging.warn(f'({self.count}) {self.custom_message}')
+        else:
+            self._original_showwarning(message, category, filename, lineno, file, line)

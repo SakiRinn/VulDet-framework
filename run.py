@@ -17,8 +17,9 @@ from utils.huggingface import SCHEDULER_TYPES, load_transformers
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
-    parser.add_argument("config", type=str, help="Path to the YAML file used to set hyperparameters.")
+    parser.add_argument("task", choices=['train', 'eval', 'inference'], type=str)
+    parser.add_argument("config", type=str,
+                        help="Path to the YAML file used to set hyperparameters.")
     parser.add_argument("--output-dir", default="", type=str,
                         help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--weight-path", type=str,
@@ -135,7 +136,7 @@ def main():
             runner.train(optimizer, train_dataset, lr_scheduler, eval_dataset)
         logging.info("Training completed.")
 
-    # - Evaluate
+    # - Eval
     if args.task == 'eval' and args.local_rank in [-1, 0]:
         if not args.weight_path:
             raise ValueError("When evaluating, `--weight_path` must be specified.")

@@ -4,8 +4,11 @@ dataset:
         eval: 'data/devign/eval.json'
     file_type: 'json'
 transformer:
-    model_name_or_path: meta-llama/Llama-2-7b-hf
+    model_name_or_path: "meta-llama/Meta-Llama-3-8B"
     bits: 8
+    custom_tokens:
+        - "[VULNERABLE]"
+        - "[BENIGN]"
 peft:
     type: lora
     task: causal_lm
@@ -46,3 +49,4 @@ runner:
     # dataset
     dataloader_drop_last: True
     group_by_length: False
+seed: 114514
