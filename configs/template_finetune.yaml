@@ -7,7 +7,6 @@ dataset:
     file_path: str
     test_split: float [>0.0, <1.0]
     # other kwargs
-    data_format: ['json', 'csv']
     code_field: str
     label_field: str
     type_field: <optional> str

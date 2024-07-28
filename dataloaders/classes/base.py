@@ -19,13 +19,13 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def load(self, file_path) -> 'list':
         pass
 
-    def train_test_split(self, test_size=0.2):
+    def train_test_split(self, test_size=0.25):
         if test_size < 0:
             raise ValueError("Parameter `test_size` must be greater than 0.")
         split_idx = int(len(self.data) * (1. - test_size)) if test_size < 1. \
             else len(self.data) - int(test_size)
         indices = list(range(len(self.data)))
         return {
-            'train': Subset(self, indices[:split_idx]),
-            'test': Subset(self, indices[split_idx:])
+            'train': Subset(self, indices[split_idx:]),
+            'test': Subset(self, indices[:split_idx])
         }

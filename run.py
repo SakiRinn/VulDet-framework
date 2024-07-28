@@ -102,12 +102,12 @@ def main():
     if isinstance(file_path, dict):
         # Format 1
         train_dataset = TextDataset(file_path['train'], **dataset_args)
-        eval_dataset = TextDataset(file_path['eval'], **dataset_args)
+        test_dataset = TextDataset(file_path['test'], **dataset_args)
     else:
         # Format 2
         test_split = dataset_args.pop('test_split')
-        dataset = TextDataset(file_path, **dataset_args)
-        train_dataset, eval_dataset = dataset.train_test_split(test_split)
+        train_dataset, test_dataset = TextDataset.from_json(file_path, **dataset_args) \
+            .train_test_split(test_split).values()
     logging.info("Loading completed.")
 
     # - Optimizer & scheduler
@@ -142,7 +142,7 @@ def main():
         if args.no_eval_when_training:
             runner.train(optimizer, train_dataset, lr_scheduler)
         else:
-            runner.train(optimizer, train_dataset, lr_scheduler, eval_dataset)
+            runner.train(optimizer, train_dataset, lr_scheduler, test_dataset)
         logging.info("Training completed.")
 
     # - Eval
@@ -152,7 +152,7 @@ def main():
         runner.load_weights(args.weight_path)
 
         logging.info("Start evaluation...")
-        eval_result = runner.eval(eval_dataset)
+        eval_result = runner.eval(test_dataset)
         logging.info("Evaluation completed.")
 
         logging.info("***** Evaluation results *****")
