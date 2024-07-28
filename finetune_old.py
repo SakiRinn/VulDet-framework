@@ -14,7 +14,7 @@ from datasets import Dataset
 from peft.peft_model import PeftModel
 
 import utils
-from utils.finetune import find_all_linear_names, resize_embedding_and_tokenizer, train_prompt, eval_prompt
+from utils.model import find_all_linear_names, resize_embedding_and_tokenizer, train_prompt, eval_prompt
 from utils.huggingface import load_transformers, DEFAULT_TOKENS
 
 from peft import LoraConfig, get_peft_model

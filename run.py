@@ -9,6 +9,7 @@ import torch
 import yaml
 
 import dataloaders
+from dataloaders import TextDataset
 import models
 import utils
 from utils import Runner
@@ -97,8 +98,16 @@ def main():
 
     # - Dataset
     logging.info("Start Loading dataset...")
-    train_dataset = dataset_class(is_train=True, **dataset_args)
-    eval_dataset = dataset_class(is_train=False, **dataset_args)
+    file_path = dataset_args.pop('file_path')
+    if isinstance(file_path, dict):
+        # Format 1
+        train_dataset = TextDataset(file_path['train'], **dataset_args)
+        eval_dataset = TextDataset(file_path['eval'], **dataset_args)
+    else:
+        # Format 2
+        test_split = dataset_args.pop('test_split')
+        dataset = TextDataset(file_path, **dataset_args)
+        train_dataset, eval_dataset = dataset.train_test_split(test_split)
     logging.info("Loading completed.")
 
     # - Optimizer & scheduler

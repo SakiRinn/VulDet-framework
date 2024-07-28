@@ -1,19 +1,20 @@
 class:
     dataset: ['TextDataset', 'GraphDataset']
     model: ['DevignForSequence', 'ReGVD']
-    optimizer: str          # ClassName in `torch.optim`
+    optimizer: str              # ClassName in `torch.optim`
 dataset:
-    # Format 1, `validate_split` must be filled in.
-    file_path: str
-    # Format 2, best to left `validate_split` as the default.
+    # Format 1
     file_path:
         train: str
-        eval: str
-    file_type: ['json', 'draper']
-    validate_split: <optional> float [>0.0, <1.0]
-    # If `file_type` == 'json', then
+        test: str
+    # Format 2
+    file_path: str
+    test_split: float [>0.0, <1.0]
+    # other kwargs
+    data_format: ['json', 'csv']
     code_field: str
     label_field: str
+    type_field: <optional> str
 model:
     transformer:                # Optional
         model_name_or_path: str

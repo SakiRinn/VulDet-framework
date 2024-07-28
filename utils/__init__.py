@@ -1,5 +1,4 @@
-from .tokenize import code_tokenize, symbolic_tokenize
-from .metric import Metric
 from .runner import Runner, FinetuneRunner
-from .finetune import *
+from .metric import Metric
+from .model import resize_embedding_and_tokenizer, find_all_linear_names
 from .misc import *

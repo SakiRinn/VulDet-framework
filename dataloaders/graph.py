@@ -1,149 +1,325 @@
-import copy
-
-from dgl import DGLGraph
-import numpy as np
-import torch
 import json
-from tqdm import tqdm
+import logging
+import os
+import os.path as osp
+import time
+import datetime
+import csv
+import shutil
+import signal
+import subprocess
 
-n_identifier = 'features'
-g_identifier = 'structure'
-l_identifier = 'label'
+import numpy as np
+import pandas as pd
 
-def load_default_identifiers(n, g, l):
-    if n is None:
-        n = n_identifier
-    if g is None:
-        g = g_identifier
-    if l is None:
-        l = l_identifier
-    return n, g, l
-
-
-def initialize_batch(entries, batch_size, shuffle=False):
-    total = len(entries)
-    print(str(total)+'k'*35)
-    indices = np.arange(0, total , 1)
-    if shuffle:
-        np.random.shuffle(indices)
-    batch_indices = []
-    start = 0
-    end = len(indices)
-    curr = start
-    while curr < end:
-        c_end = curr + batch_size
-        if c_end > end:
-            c_end = end
-        batch_indices.append(indices[curr:c_end])
-        curr = c_end
-    return batch_indices[::-1]
+from dataloaders import code_tokenize
 
 
-class DataEntry:
-    def __init__(self, datset, num_nodes, features, edges, target):
-        self.dataset = datset
-        self.num_nodes = num_nodes
-        self.target = target
-        self.graph = DGLGraph()
-        self.features = torch.tensor(features)
-        self.graph.add_nodes(self.num_nodes, data={'features': self.features})   ##
-        for s, _type, t in edges:
-            type_number = self.dataset.get_edge_type_number(_type)
-            self.graph.add_edge(s, t, data={'type': torch.tensor([type_number])})
+# Require joern v0.2.5
+PROJECT_DIR = osp.realpath(osp.join(osp.dirname(__file__), '..'))
+JOERN_DIR = osp.join(PROJECT_DIR, 'joern')
 
-class DataSet:
-    def __init__(self, train_src, valid_src, test_src, batch_size, n_ident=None, g_ident=None, l_ident=None):
-        self.train_examples = []
-        self.valid_examples = []
-        self.test_examples = []
-        self.train_batches = []
-        self.valid_batches = []
-        self.test_batches = []
-        self.batch_size = batch_size
-        self.edge_types = {}
-        self.max_etype = 0
-        self.feature_size = 0
-        self.n_ident, self.g_ident, self.l_ident= load_default_identifiers(n_ident, g_ident, l_ident)
-        self.read_dataset(train_src, valid_src, test_src)
-        self.initialize_dataset()
+NODE_TYPES = [
+    'AndExpression',
+    'Sizeof',
+    'Identifier',
+    'ForInit',
+    'ReturnStatement',
+    'SizeofOperand',
+    'InclusiveOrExpression',
+    'PtrMemberAccess',
+    'AssignmentExpression',
+    'ParameterList',
+    'IdentifierDeclType',
+    'SizeofExpression',
+    'SwitchStatement',
+    'IncDec',
+    'Function',
+    'BitAndExpression',
+    'UnaryExpression',
+    'DoStatement',
+    'GotoStatement',
+    'Callee',
+    'OrExpression',
+    'ShiftExpression',
+    'Decl',
+    'CFGErrorNode',
+    'WhileStatement',
+    'InfiniteForNode',
+    'RelationalExpression',
+    'CFGExitNode',
+    'Condition',
+    'BreakStatement',
+    'CompoundStatement',
+    'UnaryOperator',
+    'CallExpression',
+    'CastExpression',
+    'ConditionalExpression',
+    'ArrayIndexing',
+    'PostIncDecOperationExpression',
+    'Label',
+    'ArgumentList',
+    'EqualityExpression',
+    'ReturnType',
+    'Parameter',
+    'Argument',
+    'Symbol',
+    'ParameterType',
+    'Statement',
+    'AdditiveExpression',
+    'PrimaryExpression',
+    'DeclStmt',
+    'CastTarget',
+    'IdentifierDeclStatement',
+    'IdentifierDecl',
+    'CFGEntryNode',
+    'TryStatement',
+    'Expression',
+    'ExclusiveOrExpression',
+    'ClassDef',
+    'File',
+    'UnaryOperationExpression',
+    'ClassDefStatement',
+    'FunctionDef',
+    'IfStatement',
+    'MultiplicativeExpression',
+    'ContinueStatement',
+    'MemberAccess',
+    'ExpressionStatement',
+    'ForStatement',
+    'InitializerList',
+    'ElseStatement'
+]
+NODE_TYPES_TO_IDS = {
+    'AndExpression': 1,
+    'Sizeof': 2,
+    'Identifier': 3,
+    'ForInit': 4,
+    'ReturnStatement': 5,
+    'SizeofOperand': 6,
+    'InclusiveOrExpression': 7,
+    'PtrMemberAccess': 8,
+    'AssignmentExpression': 9,
+    'ParameterList': 10,
+    'IdentifierDeclType': 11,
+    'SizeofExpression': 12,
+    'SwitchStatement': 13,
+    'IncDec': 14,
+    'Function': 15,
+    'BitAndExpression': 16,
+    'UnaryExpression': 17,
+    'DoStatement': 18,
+    'GotoStatement': 19,
+    'Callee': 20,
+    'OrExpression': 21,
+    'ShiftExpression': 22,
+    'Decl': 23,
+    'CFGErrorNode': 24,
+    'WhileStatement': 25,
+    'InfiniteForNode': 26,
+    'RelationalExpression': 27,
+    'CFGExitNode': 28,
+    'Condition': 29,
+    'BreakStatement': 30,
+    'CompoundStatement': 31,
+    'UnaryOperator': 32,
+    'CallExpression': 33,
+    'CastExpression': 34,
+    'ConditionalExpression': 35,
+    'ArrayIndexing': 36,
+    'PostIncDecOperationExpression': 37,
+    'Label': 38,
+    'ArgumentList': 39,
+    'EqualityExpression': 40,
+    'ReturnType': 41,
+    'Parameter': 42,
+    'Argument': 43,
+    'Symbol': 44,
+    'ParameterType': 45,
+    'Statement': 46,
+    'AdditiveExpression': 47,
+    'PrimaryExpression': 48,
+    'DeclStmt': 49,
+    'CastTarget': 50,
+    'IdentifierDeclStatement': 51,
+    'IdentifierDecl': 52,
+    'CFGEntryNode': 53,
+    'TryStatement': 54,
+    'Expression': 55,
+    'ExclusiveOrExpression': 56,
+    'ClassDef': 57,
+    'File': 58,
+    'UnaryOperationExpression': 59,
+    'ClassDefStatement': 60,
+    'FunctionDef': 61,
+    'IfStatement': 62,
+    'MultiplicativeExpression': 63,
+    'ContinueStatement': 64,
+    'MemberAccess': 65,
+    'ExpressionStatement': 66,
+    'ForStatement': 67,
+    'InitializerList': 68,
+    'ElseStatement': 69
+}
+EDGE_TYPES = [
+    'IS_AST_PARENT',
+    'IS_CLASS_OF',
+    'FLOWS_TO',
+    'EDF',
+    'USE',
+    'REACHES',
+    'CONTROLS',
+    'DECLARES',
+    'DOM',
+    'POST_DOM',
+    'IS_FUNCTION_OF_AST',
+    'IS_FUNCTION_OF_CFG'
+]
+EDGE_TYPES_TO_IDS = {
+    'IS_AST_PARENT': 1,
+    'IS_CLASS_OF': 2,
+    'FLOWS_TO': 3,
+    'DEF': 4,
+    'USE': 5,
+    'REACHES': 6,
+    'CONTROLS': 7,
+    'DECLARES': 8,
+    'DOM': 9,
+    'POST_DOM': 10,
+    'IS_FUNCTION_OF_AST': 11,
+    'IS_FUNCTION_OF_CFG': 12
+}
 
-    def initialize_dataset(self):
-
-        self.initialize_train_batch()
-        self.initialize_valid_batch()
-        self.initialize_test_batch()
-
-    def read_dataset(self, train_src):
-        with open(train_src,"r") as fp:
-            train_data = json.load(fp)
-            for entry in tqdm(train_data):
-                example = DataEntry(datset=self, num_nodes=len(entry[self.n_ident]), features=entry[self.n_ident],
-                                    edges=entry[self.g_ident], target=entry[self.l_ident][0][0])
-
-                if self.feature_size == 0:
-                    self.feature_size = example.features.size(1)
-                    debug('Feature Size %d' % self.feature_size)
-                self.train_examples.append(example)
+TIMEOUT = 3600
 
 
-    def get_edge_type_number(self, _type):
-        if _type not in self.edge_types:
-            self.edge_types[_type] = self.max_etype
-            self.max_etype += 1
-        return self.edge_types[_type]
+def dataframe_to_code(dataframe, output_dir, code_tag='code'):
+    if not osp.exists(output_dir):
+        os.makedirs(output_dir)
+    for idx, row in dataframe.iterrows():
+        with open(osp.join(output_dir, f"{idx}.c"), 'w') as f:
+            f.write(row[code_tag])
 
-    @property
-    def max_edge_type(self):
-        return self.max_etype
 
-    def initialize_train_batch(self, batch_size=-1):
-        if batch_size == -1:
-            batch_size = self.batch_size
-        self.train_batches = initialize_batch(self.train_examples, batch_size, shuffle=False)
-        return len(self.train_batches)
-        pass
+def analyze_code(code_dir, output_dir):
+    def terminate(pid):
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, os.WNOHANG)
+        shutil.rmtree('tmp/')
 
-    def initialize_valid_batch(self, batch_size=-1):
-        if batch_size == -1:
-            batch_size = self.batch_size
-        self.valid_batches = initialize_batch(self.valid_examples, batch_size, shuffle=False)
-        return len(self.valid_batches)
-        pass
+    joern_parse = osp.join(JOERN_DIR, 'joern-parse')
+    command = f"{joern_parse} {code_dir} tmp"
+    start_date = datetime.datetime.now()
+    process = subprocess.Popen(command, shell=True)
+    try:
+        while process.poll() is None:
+            time.sleep(0.5)
+            end_date = datetime.datetime.now()
+            if (end_date - start_date).seconds > TIMEOUT:
+                terminate(process.pid)
+    except BaseException as e:
+        terminate(process.pid)
+        raise e
+    os.rename(f'tmp/{code_dir}', output_dir)
+    shutil.rmtree('tmp/')
 
-    def initialize_test_batch(self, batch_size=-1):
-        if batch_size == -1:
-            batch_size = self.batch_size
-        self.test_batches = initialize_batch(self.test_examples, batch_size, shuffle=False)
 
-        return len(self.test_batches)
-        pass
+def parse_graph(w2v_model, node_csv, edge_csv):
+    with open(node_csv, 'r') as nc:
+        nodes = csv.DictReader(nc, delimiter='\t')
 
-    def get_dataset_by_ids_for_GGNN(self, entries, ids):
-        taken_entries = [entries[i] for i in ids]
-        labels = [e.target for e in taken_entries]
-        batch_graph = GGNNGraphEntry()
-        for entry in taken_entries:
+        nodes_to_ids, node_features = {}, {}
+        for i, node in enumerate(nodes):
+            is_cfg_node = node['isCFGNode'].strip()
+            if is_cfg_node != 'True':
+                continue
 
-            batch_graph.add_subgraph(copy.deepcopy(entry.graph))
-        return batch_graph, torch.FloatTensor(labels)
+            node_key, node_type = node['key'], node['type']
+            if node_type == 'File':
+                continue
+            node_content = node['code'].strip()
+            node_split = code_tokenize(node_content)
 
-    def get_next_train_batch(self):
+            nrp = np.zeros(w2v_model.vector_size)
+            for token in node_split:
+                embedding = w2v_model.wv[token] if token in w2v_model.wv else np.zeros(
+                    w2v_model.vector_size)
+                nrp += embedding
+            f_nrp = np.divide(nrp, len(node_split)) if len(node_split) > 0 else nrp
+            type_onehot = np.eye(len(NODE_TYPES_TO_IDS))[NODE_TYPES_TO_IDS[node_type] - 1]
+            node_feature = np.concatenate([type_onehot, f_nrp], axis=0)
 
-        if len(self.train_batches) == 0:
-            self.initialize_train_batch()
-        ids = self.train_batches.pop()
+            node_features[node_key] = node_feature
+            nodes_to_ids[node_key] = i
 
-        return self.get_dataset_by_ids_for_GGNN(self.train_examples, ids)
+    edges = []
+    nodes_on_edge = set()
+    with open(edge_csv, 'r') as ec:
+        raw_edges = csv.DictReader(ec, delimiter='\t')
+        for edge in raw_edges:
+            start, end, edge_type = edge["start"], edge["end"], edge["type"]
+            if edge_type == "IS_FILE_OF" or edge_type not in EDGE_TYPES_TO_IDS:
+                continue
+            if start not in nodes_to_ids or end not in nodes_to_ids:
+                continue
+            edges.append([start, EDGE_TYPES_TO_IDS[edge_type], end])
+            nodes_on_edge.update({start, end})
 
-    def get_next_valid_batch(self):
-        if len(self.valid_batches) == 0:
-            self.initialize_valid_batch()
-        ids = self.valid_batches.pop()
+    noes_to_ids = {node: i for i, node in enumerate(nodes_on_edge)}
+    nodes = [node_features[node_key] for node_key in nodes_on_edge]
+    edges = [[noes_to_ids[start], edge_type_id, noes_to_ids[end]]
+             for start, edge_type_id, end in edges]
 
-        return self.get_dataset_by_ids_for_GGNN(self.valid_examples, ids)
+    try:
+        graph = {'nodes': np.stack(nodes, axis=0), 'edges': edges}
+    except ValueError:
+        graph = {'nodes': np.array([]), 'edges': edges}
+    return graph
 
-    def get_next_test_batch(self):
-        if len(self.test_batches) == 0:
-            self.initialize_test_batch()
-        ids = self.test_batches.pop()
-        return self.get_dataset_by_ids_for_GGNN(self.test_examples, ids)
+
+def generate_graphs(w2v_model, csv_dir, raw_data):
+    graphs = []
+    for i, entry in enumerate(raw_data):
+        filename = f'{i}.c'
+        node_csv = osp.join(csv_dir, filename, 'nodes.csv')
+        edge_csv = osp.join(csv_dir, filename, 'edges.csv')
+        label = int(entry['target'])
+        if not osp.exists(node_csv) or not osp.exists(edge_csv):
+            continue
+        graph = parse_graph(w2v_model, node_csv, edge_csv)
+        graph.update({'index': i, 'label': label})
+        graphs.append(graph)
+    return graphs
+
+
+def json_to_graphs(w2v_model, json_path, output_dir, code_field='code'):
+    # Read
+    with open(json_path, 'r') as f:
+        raw_data = json.load(f)
+        dataframe = pd.DataFrame.from_records(raw_data)
+    # Process
+    dataframe_to_code(dataframe, 'raw_code/', code_field)
+    csv_dir = osp.join(output_dir, 'intermediate')
+    try:
+        analyze_code('raw_code/', csv_dir)
+    finally:
+        shutil.rmtree('raw_code/')
+    graphs = generate_graphs(w2v_model, csv_dir, raw_data)
+    return graphs
+
+
+def csv_to_graphs(w2v_model, csv_path, output_dir, code_field='code', delimiter=','):
+    # Read
+    with open(csv_path, 'r') as f:
+        csv_reader = csv.DictReader(f, delimiter=delimiter)
+        raw_data = [row for row in csv_reader]
+        dataframe = pd.DataFrame.from_records(raw_data)
+    # Process
+    dataframe_to_code(dataframe, 'raw_code/', code_field)
+    csv_dir = osp.join(output_dir, 'intermediate')
+    try:
+        analyze_code('raw_code/', csv_dir)
+    finally:
+        shutil.rmtree('raw_code/')
+    graphs = generate_graphs(w2v_model, csv_dir, raw_data)
+    return graphs

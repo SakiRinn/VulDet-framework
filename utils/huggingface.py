@@ -45,9 +45,9 @@ def get_quantization_config(bits=-1):
     return bnb_config
 
 
-def load_datasets(dataset_name_or_path: str, validate_split=0.1):
+def load_datasets(dataset_name_or_path: str, test_split=0.1):
     dataset = load_dataset(dataset_name_or_path)
-    train_dataset, eval_dataset = dataset.train_test_split(test_size=validate_split).values()
+    train_dataset, eval_dataset = dataset.train_test_split(test_size=test_split).values()
     return train_dataset, eval_dataset
 
 

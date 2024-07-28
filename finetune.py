@@ -13,8 +13,8 @@ from datasets import Dataset
 import utils
 from utils import FinetuneRunner, WarningCounter
 from utils import find_all_linear_names, resize_embedding_and_tokenizer
-from utils.finetune import eval_prompt, train_prompt
 from utils.huggingface import DEFAULT_TOKENS, PEFT_TASK_TYPES, load_transformers
+from dataloaders import eval_prompt, train_prompt
 
 
 def get_args():
@@ -80,9 +80,16 @@ def main():
 
     # - Dataset
     logging.info("Start Loading dataset...")
-    file_path = dataset_args['file_path']
-    train_dataset = Dataset.from_json(file_path['train']).map(train_prompt).with_format('torch')
-    eval_dataset = Dataset.from_json(file_path['eval']).map(eval_prompt).with_format('torch')
+    file_path = dataset_args.pop('file_path')
+    if isinstance(file_path, dict):
+        # Format 1
+        train_dataset = Dataset.from_json(file_path['train']).map(train_prompt)
+        eval_dataset = Dataset.from_json(file_path['eval']).map(eval_prompt)
+    else:
+        # Format 2
+        test_split = dataset_args.pop('test_split')
+        dataset = Dataset.from_json(file_path['eval'])
+        train_dataset, eval_dataset = dataset.train_test_split(test_split, shuffle=False)
     logging.info("Loading completed.")
 
     # - Peft

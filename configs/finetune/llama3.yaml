@@ -2,7 +2,7 @@ dataset:
     file_path:
         train: 'data/devign/train.json'
         eval: 'data/devign/eval.json'
-    file_type: 'json'
+    data_format: 'json'
 transformer:
     model_name_or_path: "meta-llama/Meta-Llama-3-8B"
     bits: 8

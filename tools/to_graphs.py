@@ -8,23 +8,11 @@ from gensim.models import Word2Vec
 import numpy as np
 import pandas as pd
 
+from dataloaders.graph import json_to_graphs
+
 sys.path.append(osp.realpath(osp.join(osp.dirname(__file__), '..')))
-from utils.graph import df2csv, csv2graph
+from dataloaders import dataframe_to_csv, csv_to_graph
 
-
-def generate_graphs(csv_dir, raw_data, w2v_model):
-    graphs = []
-    for i, entry in enumerate(raw_data):
-        filename = f'{i}.c'
-        node_csv = osp.join(csv_dir, filename, 'nodes.csv')
-        edge_csv = osp.join(csv_dir, filename, 'edges.csv')
-        label = int(entry['target'])
-        if not osp.exists(node_csv) or not osp.exists(edge_csv):
-            continue
-        graph = csv2graph(node_csv, edge_csv, w2v_model)    # main
-        graph.update({'index': i, 'label': label})
-        graphs.append(graph)
-    return graphs
 
 def save_graphs(graphs, save_dir, filename='graphs'):
     node_features = []
@@ -54,23 +42,15 @@ def main():
     parser.add_argument('--output-dir', help='The directory to the output all files.', default='outputs/graph/')
     args = parser.parse_args()
 
-    with open(args.data_path, 'r') as f:
-        raw_data = json.load(f)
-        df_data = pd.DataFrame.from_records(raw_data)
     w2v_model = Word2Vec.load(args.w2v)
-
-    print("Processing...")
+    print("Success to load w2v model, start processing...")
 
     if not osp.exists(args.output_dir):
         os.mkdir(args.output_dir)
-
-    csv_dir = osp.join(args.output_dir, 'csv')
-    df2csv(df_data, csv_dir)
-    graphs = generate_graphs(csv_dir, raw_data, w2v_model)
+    graphs = json_to_graphs(w2v_model, args.data_path, args.output_dir)
 
     data_name = osp.split(args.data_path)[-1].split('.')[0]
     save_graphs(graphs, args.output_dir, data_name)
-
     print('Completed!')
 
 

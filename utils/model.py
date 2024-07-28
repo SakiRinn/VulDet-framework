@@ -3,7 +3,7 @@ import logging
 import torch
 import bitsandbytes as bnb
 
-from utils.tokenize import remove_comments, remove_blank_lines
+from dataloaders.tokenize import remove_comments, remove_blank_lines
 
 
 def resize_embedding_and_tokenizer(model, tokenizer,
@@ -60,23 +60,3 @@ def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
         logging.info("Adding lm_head to lora_module_names")
         linear_names.add("lm_head")
     return list(linear_names)
-
-
-def train_prompt(sample):
-    code = sample['input'].strip()
-    code = remove_comments(code)
-    code = remove_blank_lines(code)
-    prompt = f"### Instruction:\n{sample['instruction']}\n" \
-             f"\n### Input:\n{code}\n" \
-             f"\n### Output:\n{sample['output']}"
-    return {'text': prompt}
-
-
-def eval_prompt(sample):
-    code = sample['input'].strip()
-    code = remove_comments(code)
-    code = remove_blank_lines(code)
-    prompt = f"### Instruction:\n{sample['instruction']}\n" \
-             f"\n### Input:\n{code}\n" \
-             f"\n### Output:\n"
-    return {'text': prompt}
