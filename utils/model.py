@@ -3,8 +3,6 @@ import logging
 import torch
 import bitsandbytes as bnb
 
-from dataloaders.tokenize import remove_comments, remove_blank_lines
-
 
 def resize_embedding_and_tokenizer(model, tokenizer,
                                    special_tokens_dict: 'dict[str, str]' = {},
