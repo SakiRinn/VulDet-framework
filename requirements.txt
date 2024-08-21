@@ -7,9 +7,11 @@ trl==0.9.6
 bitsandbytes==0.43.1
 gensim==4.3.0
 nltk==3.8.1
+dgl==2.1.0
 scikit-learn==1.2.2
 scipy==1.12.0
 tqdm==4.66.4
 pyyaml==6.0.1
+h5py==3.11.0
 # pip install git+https://github.com/huggingface/transformers.git@main accelerate
 accelerate==0.32.1

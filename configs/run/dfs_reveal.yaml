@@ -1,16 +1,16 @@
 class:
-    dataset: 'TextDataset'
-    model: 'DevignForSequence'
-    optimizer: 'AdamW'
+    dataset: "TextDataset"
+    model: "DevignForSequence"
+    optimizer: "AdamW"
 dataset:
     file_path: <YOUR_PATH>
     test_split: 0.2
-    data_format: 'json'
-    code_field: 'code'
-    label_field: 'label'
+    data_format: "json"
+    code_field: "code"
+    label_field: "label"
 model:
     transformer:
-        model_name_or_path: 'microsoft/codebert-base'
+        model_name_or_path: "microsoft/codebert-base"
         do_lower_case: False
     window_size: 5
     hidden_size: 256
@@ -19,7 +19,7 @@ model:
     num_gnn_layers: 2
 optimizer:
     lr_scheduler:
-        type: 'linear'
+        type: "linear"
         num_warmup_steps: -1
     lr: 0.0005
     weight_decay: 0.0

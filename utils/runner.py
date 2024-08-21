@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import os
 import random
-from numpy.ma import count
 from tqdm import tqdm
 
 import torch
@@ -15,6 +14,7 @@ from transformers.modeling_outputs import ModelOutput
 from peft import get_peft_model, PeftModel
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
+from dataloaders.prompt import TAG_FALSE, TAG_TRUE
 import utils
 
 
@@ -46,7 +46,7 @@ class BaseRunner(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def inference(self):
+    def infer(self):
         pass
 
     @staticmethod
@@ -102,9 +102,10 @@ class Runner(BaseRunner):
     ]
 
     def __init__(self, model, tokenizer, output_dir='./run_outputs', **kwargs):
-        super().__init__(model, tokenizer, output_dir, **kwargs)
+        self.local_rank = kwargs.pop('local_rank', -1)
+        self.fp16 = kwargs.pop('fp16', False)
         self.cur_epoch, self.cur_step = 0, 0
-        self.local_rank = -1
+        super().__init__(model, tokenizer, output_dir, **kwargs)
 
     def train(self, optimizer, dataset, lr_scheduler=None, eval_dataset=None):
 
@@ -299,7 +300,7 @@ class Runner(BaseRunner):
         results.update({"Avg_loss": (total_loss / eval_step)})
         return results
 
-    def inference(self, code_sample):
+    def infer(self, code_sample):
         tokens = ' '.join(code_sample.split())
         inputs = self.tokenizer(tokens, return_tensors="pt").to(self.device)
         inputs = {k: v for k, v in inputs.items()
@@ -457,14 +458,14 @@ class FinetuneRunner(BaseRunner):
             pin_memory=True
         )
 
-        num = 0
         preds, labels = [], []
+        num = 0
 
         with torch.no_grad():
             for batch in tqdm(dataloader):
                 len_filter = [i for i, t in enumerate(batch['text'])
                               if len(t) < self.max_seq_length]
-                label = np.array([1 if 'VULNERABLE' in t else 0
+                label = np.array([1 if TAG_TRUE in t else 0
                                  for t in batch['output']])[len_filter]
 
                 input_texts = [t for t in batch['text'] if len(t) < self.max_seq_length]
@@ -472,16 +473,16 @@ class FinetuneRunner(BaseRunner):
                     continue
                 inputs = self.tokenizer(input_texts, return_tensors="pt",
                                         truncation=True, padding=True).to('cuda')
-                outputs = model.generate(**inputs, max_new_tokens=1)
+                outputs = model.generate(**inputs, max_new_tokens=16)
                 output_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
                 pred_texts = [t.split("### Output:\n")[1].strip() for t in output_texts]
-                pred = np.array([1 if 'VULNERABLE' in t else 0 for t in pred_texts])
+                pred = np.array([1 if TAG_TRUE in t else 0 for t in pred_texts])
 
                 for t, l in zip(pred_texts, label):
-                    lt = "[VULNERABLE]" if l else "[BENIGN]"
+                    l_tag = TAG_TRUE if l else TAG_FALSE
                     num += 1
-                    logging.info(f'### ({num}) Output: {t} / {lt}')
+                    logging.info(f'### ({num}) Output: {t} / {l_tag}')
 
                 preds.append(pred)
                 labels.append(label)
@@ -493,7 +494,7 @@ class FinetuneRunner(BaseRunner):
         results = utils.Metric(preds, labels)()
         return results
 
-    def inference(self, prompt):
+    def infer(self, prompt):
         ...
 
     def merge_and_save(self, dirname, peft_dir=None):

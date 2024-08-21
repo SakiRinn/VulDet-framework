@@ -14,7 +14,8 @@ from datasets import Dataset
 from peft.peft_model import PeftModel
 
 import utils
-from utils.model import find_all_linear_names, resize_embedding_and_tokenizer, train_prompt, eval_prompt
+from utils.model import find_all_linear_names, resize_embedding_and_tokenizer
+from dataloaders import eval_prompt, train_prompt
 from utils.huggingface import load_transformers, DEFAULT_TOKENS
 
 from peft import LoraConfig, get_peft_model
@@ -165,19 +166,20 @@ def train(model_name_or_path):
 def eval(model_name_or_path):
     custom_tokens = ['[VULNERABLE]', '[BENIGN]']
     max_length = 2048
-    lora_dir = 'saved_models/llama3-07-25-05-04-38/checkpoint-5462'
+    lora_dir = ''
 
     _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
     custom_tokens = [token.strip() for token in custom_tokens]
     resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
-    model = PeftModel.from_pretrained(
-        model,
-        lora_dir,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-        device_map="auto"
-    )
-    # model = model.merge_and_unload()
+    if lora_dir:
+        model = PeftModel.from_pretrained(
+            model,
+            lora_dir,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            device_map="auto"
+        )
+        model = model.merge_and_unload()
     model.eval()
 
     eval_dataset = Dataset.from_json('data/devign/eval.json').map(eval_prompt)

@@ -19,7 +19,7 @@ from dataloaders import eval_prompt, train_prompt
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("task", choices=['train', 'eval', 'inference'], type=str)
+    parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
     parser.add_argument("config", type=str,
                         help="Path to the YAML file used to set hyperparameters.")
     parser.add_argument("--checkpoint-dir", default=None, type=str,
@@ -81,15 +81,18 @@ def main():
     # - Dataset
     logging.info("Start Loading dataset...")
     file_path = dataset_args.pop('file_path')
+    dataset_func = getattr(Dataset, 'from_' + dataset_args['data_format'].strip())
     if isinstance(file_path, dict):
         # Format 1
-        train_dataset = Dataset.from_json(file_path['train']).map(train_prompt)
-        eval_dataset = Dataset.from_json(file_path['eval']).map(eval_prompt)
+        train_dataset = dataset_func(file_path['train']).map(train_prompt)
+        test_dataset = dataset_func(file_path['test']).map(eval_prompt)
     else:
         # Format 2
         test_split = dataset_args.pop('test_split')
-        dataset = Dataset.from_json(file_path['eval'])
-        train_dataset, eval_dataset = dataset.train_test_split(test_split, shuffle=False)
+        train_dataset, test_dataset = dataset_func(file_path, **dataset_args). \
+            train_test_split(test_split, shuffle=False).values()
+        train_dataset = train_dataset.map(train_prompt)
+        test_dataset = test_dataset.map(eval_prompt)
     logging.info("Loading completed.")
 
     # - Peft
@@ -136,13 +139,13 @@ def main():
                 runner.train(train_dataset, peft_config,
                              resume_from_checkpoint=args.checkpoint_dir)
             else:
-                runner.train(train_dataset, peft_config, eval_dataset,
+                runner.train(train_dataset, peft_config, test_dataset,
                              resume_from_checkpoint=args.checkpoint_dir)
         logging.info("Training completed.")
-        eval_result = runner.eval(eval_dataset)
+        eval_result = runner.eval(test_dataset)
         if not args.no_eval_when_training:
             logging.info("Start evaluation...")
-            eval_result = runner.eval(eval_dataset)
+            eval_result = runner.eval(test_dataset)
             logging.info("***** Evaluation results *****")
             for key in sorted(eval_result.keys()):
                 logging.info(f"  {key} = {round(eval_result[key], 4)}")
@@ -152,7 +155,7 @@ def main():
         if not args.checkpoint_dir:
             raise ValueError("When evaluating, `--checkpoint-dir` must be specified.")
         logging.info("Start evaluation...")
-        eval_result = runner.eval(eval_dataset)
+        eval_result = runner.eval(test_dataset)
         logging.info("***** Evaluation results *****")
         for key in sorted(eval_result.keys()):
             logging.info(f"  {key} = {round(eval_result[key], 4)}")

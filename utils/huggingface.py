@@ -47,8 +47,8 @@ def get_quantization_config(bits=-1):
 
 def load_datasets(dataset_name_or_path: str, test_split=0.1):
     dataset = load_dataset(dataset_name_or_path)
-    train_dataset, eval_dataset = dataset.train_test_split(test_size=test_split).values()
-    return train_dataset, eval_dataset
+    train_dataset, test_dataset = dataset.train_test_split(test_size=test_split).values()
+    return train_dataset, test_dataset
 
 
 def load_transformers(model_name_or_path: str, config_name='', tokenizer_name='',

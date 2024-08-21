@@ -18,7 +18,7 @@ from utils.huggingface import SCHEDULER_TYPES, load_transformers
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("task", choices=['train', 'eval', 'inference'], type=str)
+    parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
     parser.add_argument("config", type=str,
                         help="Path to the YAML file used to set hyperparameters.")
     parser.add_argument("--output-dir", default="", type=str,
@@ -86,7 +86,7 @@ def main():
 
     # - Runner
     runner_args.update({'local_rank': args.local_rank, 'fp16': args.fp16})
-    runner = Runner(model, tokenizer, output_dir, args.no_cuda, **runner_args)
+    runner = Runner(model, tokenizer, output_dir, **runner_args)
     runner.setup_seed(args.seed)
 
     logging.info('***** Basic information *****')
@@ -102,12 +102,12 @@ def main():
     if isinstance(file_path, dict):
         # Format 1
         train_dataset = TextDataset(file_path['train'], **dataset_args)
-        eval_dataset = TextDataset(file_path['eval'], **dataset_args)
+        test_dataset = TextDataset(file_path['test'], **dataset_args)
     else:
         # Format 2
         test_split = dataset_args.pop('test_split')
-        dataset = TextDataset(file_path, **dataset_args)
-        train_dataset, eval_dataset = dataset.train_test_split(test_split)
+        train_dataset, test_dataset = TextDataset(file_path, **dataset_args) \
+            .train_test_split(test_split).values()
     logging.info("Loading completed.")
 
     # - Optimizer & scheduler
@@ -115,9 +115,10 @@ def main():
         lr_scheduler_args = optimizer_args.pop('lr_scheduler')
         lr_scheduler_type = SCHEDULER_TYPES[lr_scheduler_args.pop('type')]
 
-        steps_per_epoch = math.ceil(len(train_dataset) / runner_args['batch_size'])
-        lr_scheduler_args['num_training_steps'] = runner_args['epochs'] * steps_per_epoch
-        if lr_scheduler_args['num_warmup_steps'] < 0:      # can be 0
+        steps_per_epoch = math.ceil(len(train_dataset) / runner_args['train_batch_size'])
+        lr_scheduler_args['num_training_steps'] = \
+            runner_args['num_train_epochs'] * steps_per_epoch
+        if lr_scheduler_args.get('num_warmup_steps', -1) < 0:       # can be 0
             lr_scheduler_args['num_warmup_steps'] = steps_per_epoch
     else:
         lr_scheduler_type = None
@@ -142,17 +143,17 @@ def main():
         if args.no_eval_when_training:
             runner.train(optimizer, train_dataset, lr_scheduler)
         else:
-            runner.train(optimizer, train_dataset, lr_scheduler, eval_dataset)
+            runner.train(optimizer, train_dataset, lr_scheduler, test_dataset)
         logging.info("Training completed.")
 
     # - Eval
     if args.task == 'eval' and args.local_rank in [-1, 0]:
         if not args.weight_path:
-            raise ValueError("When evaluating, `--weight_path` must be specified.")
+            raise ValueError("When evaluating, `--weight-path` must be specified.")
         runner.load_weights(args.weight_path)
 
         logging.info("Start evaluation...")
-        eval_result = runner.eval(eval_dataset)
+        eval_result = runner.eval(test_dataset)
         logging.info("Evaluation completed.")
 
         logging.info("***** Evaluation results *****")
