@@ -12,7 +12,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from dataloaders import code_tokenize
+from .tokenize import code_tokenize
 
 
 # Require joern v0.2.5

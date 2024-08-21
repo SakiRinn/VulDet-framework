@@ -8,7 +8,7 @@ from gensim.models import Word2Vec
 import numpy as np
 import pandas as pd
 
-from dataloaders.graph import json_to_graphs
+from dataloaders.graphs import json_to_graphs
 
 sys.path.append(osp.realpath(osp.join(osp.dirname(__file__), '..')))
 from dataloaders import dataframe_to_csv, csv_to_graph
