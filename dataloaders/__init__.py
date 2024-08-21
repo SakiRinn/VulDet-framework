@@ -1,4 +1,4 @@
-from .classes import TextDataset, GraphDataset
+from .classes import TextDataset
 from .records import hdf5_to_records, pkl_to_records
 from .graphs import json_to_graphs, csv_to_graphs
 from .tokenize import code_tokenize, symbolic_tokenize

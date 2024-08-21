@@ -39,8 +39,8 @@ def resize_embedding_and_tokenizer(model, tokenizer,
         tokenizer.add_special_tokens(special_tokens_dict)
     if custom_tokens:
         tokenizer.add_tokens(custom_tokens, special_tokens=False)
-    # make embedding size can be divisible by 64 for optimization.
-    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=64)
+    # make embedding size can be divisible by 128 for optimization.
+    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=128)
 
     new_input_embedding = model.get_input_embeddings().weight.data
     new_input_embedding[input_orig_len: input_orig_len + len(new_tokens)] = input_inits

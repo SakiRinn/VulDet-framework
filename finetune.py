@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime
+from functools import partial
 import logging
 import os
 import os.path as osp
@@ -84,15 +85,15 @@ def main():
     dataset_func = getattr(Dataset, 'from_' + dataset_args['data_format'].strip())
     if isinstance(file_path, dict):
         # Format 1
-        train_dataset = dataset_func(file_path['train']).map(train_prompt)
-        test_dataset = dataset_func(file_path['test']).map(eval_prompt)
+        train_dataset = dataset_func(file_path['train'])
+        test_dataset = dataset_func(file_path['test'])
     else:
         # Format 2
         test_split = dataset_args.pop('test_split')
         train_dataset, test_dataset = dataset_func(file_path, **dataset_args). \
             train_test_split(test_split, shuffle=False).values()
-        train_dataset = train_dataset.map(train_prompt)
-        test_dataset = test_dataset.map(eval_prompt)
+    train_dataset = train_dataset.map(partial(train_prompt, tokenizer=tokenizer))
+    test_dataset = test_dataset.map(partial(eval_prompt, tokenizer=tokenizer))
     logging.info("Loading completed.")
 
     # - Peft
@@ -153,7 +154,7 @@ def main():
     # - Eval
     if args.task == 'eval':
         if not args.checkpoint_dir:
-            raise ValueError("When evaluating, `--checkpoint-dir` must be specified.")
+            logging.warn("If --checkpoint-dir is empty, the unfine-tuned modelit will be evaluated.")
         logging.info("Start evaluation...")
         eval_result = runner.eval(test_dataset)
         logging.info("***** Evaluation results *****")

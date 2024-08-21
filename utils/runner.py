@@ -477,7 +477,8 @@ class FinetuneRunner(BaseRunner):
                 output_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
                 pred_texts = [t.split("### Output:\n")[1].strip() for t in output_texts]
-                pred = np.array([1 if TAG_TRUE in t else 0 for t in pred_texts])
+                # pred = np.array([1 if TAG_TRUE in t else 0 for t in pred_texts])
+                pred = np.array([1 if 'vulnerable' in t.lower() else 0 for t in pred_texts])
 
                 for t, l in zip(pred_texts, label):
                     l_tag = TAG_TRUE if l else TAG_FALSE

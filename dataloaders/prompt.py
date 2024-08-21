@@ -5,20 +5,24 @@ TAG_FALSE = '[BENIGN]'
 INSTRUCTION = f'''You are the best code auditor in the world, skilled at finding vulnerabilities in code. Review the given code carefully and thoroughly to determine whether it is vulnerable. Your output can only be {TAG_TRUE} or {TAG_FALSE}, where {TAG_TRUE} means the code is vulnerable and {TAG_FALSE} means it is benign and non-vulnerable.'''
 
 
-def train_prompt(sample):
+def train_prompt(sample, tokenizer=None):
     code = sample['input'].strip()
     code = remove_comments(code)
     code = remove_blank_lines(code)
     prompt = f"### Instruction:\n{sample['instruction']}\n" \
-        f"\n### Input:\n{code}\n" \
-        f"\n### Output:\n{sample['output']}"
+             f"\n### Input:\n{code}\n" \
+             f"\n### Output:\n{sample['output']}"
+    if tokenizer is not None:
+        prompt = tokenizer.bos_token + prompt + tokenizer.eos_token
     return {'text': prompt}
 
-def eval_prompt(sample):
+def eval_prompt(sample, tokenizer=None):
     code = sample['input'].strip()
     code = remove_comments(code)
     code = remove_blank_lines(code)
     prompt = f"### Instruction:\n{sample['instruction']}\n" \
-        f"\n### Input:\n{code}\n" \
-        f"\n### Output:\n"
+             f"\n### Input:\n{code}\n" \
+             f"\n### Output:\n"
+    if tokenizer is not None:
+        prompt = tokenizer.bos_token + prompt
     return {'text': prompt}
