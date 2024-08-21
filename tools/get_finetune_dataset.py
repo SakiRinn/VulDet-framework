@@ -1,6 +1,11 @@
+import os
+import sys
 import json
 
-from dataloaders import INSTRUCTION
+root_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+os.chdir(root_dir)
+sys.path.append(root_dir)
+from dataloaders.prompt import INSTRUCTION, TAG_FALSE, TAG_TRUE
 
 
 if __name__ == "__main__":
@@ -12,10 +17,12 @@ if __name__ == "__main__":
             sample = {
                 'instruction': INSTRUCTION,
                 'input': d['func'],
-                'output': '[VULNERABLE]' if d['target'] != 0 else '[BENIGN]',
+                'output': TAG_TRUE if d['target'] != 0 else TAG_FALSE,
             }
             data.append(sample)
         with open('data/devign/train.json', 'w') as ff:
             json.dump(data[:test_split], ff, indent=4)
         with open('data/devign/eval.json', 'w') as ff:
             json.dump(data[test_split:], ff, indent=4)
+        with open('data/devign/all.json', 'w') as ff:
+            json.dump(data, ff, indent=4)

@@ -1,9 +1,8 @@
 from dataloaders.tokenize import remove_blank_lines, remove_comments
 
-
-TRUE_TAG = '[VULNERABLE]'
-FALSE_TAG = '[BENIGN]'
-INSTRUCTION = f'''You are the best code auditor in the world, skilled at finding vulnerabilities in code. Review the given code carefully and thoroughly to determine whether it is vulnerable. Your output can only be {TRUE_TAG} or {FALSE_TAG}, where {TRUE_TAG} means the code is vulnerable and {FALSE_TAG} means it is benign and non-vulnerable.'''
+TAG_TRUE = '[VULNERABLE]'
+TAG_FALSE = '[BENIGN]'
+INSTRUCTION = f'''You are the best code auditor in the world, skilled at finding vulnerabilities in code. Review the given code carefully and thoroughly to determine whether it is vulnerable. Your output can only be {TAG_TRUE} or {TAG_FALSE}, where {TAG_TRUE} means the code is vulnerable and {TAG_FALSE} means it is benign and non-vulnerable.'''
 
 
 def train_prompt(sample):
@@ -14,7 +13,6 @@ def train_prompt(sample):
         f"\n### Input:\n{code}\n" \
         f"\n### Output:\n{sample['output']}"
     return {'text': prompt}
-
 
 def eval_prompt(sample):
     code = sample['input'].strip()

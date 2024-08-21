@@ -1,0 +1,50 @@
+dataset:
+    file_path:
+        train: "data/devign/train.json"
+        test: "data/devign/eval.json"
+    data_format: "json"
+transformer:
+    model_name_or_path: "meta-llama/Meta-Llama-3-8B"
+    bits: 8
+    custom_tokens: []
+peft:
+    type: lora
+    task: causal_lm
+    long_lora: False
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: "none"
+    target_modules:
+        - "q_proj"
+        - "k_proj"
+        - "v_proj"
+        - "o_proj"
+runner:
+    train_batch_size: 4
+    eval_batch_size: 4
+    max_seq_length: 2048
+    # train
+    num_train_epochs: 2
+    gradient_accumulation_steps: 2
+    gradient_checkpointing: True
+    # optimize
+    optim: "adamw_bnb_8bit"
+    learning_rate: 0.0003
+    lr_scheduler_type: "linear"
+    warmup_steps: 100
+    weight_decay: 0.0
+    # eval
+    # eval_strategy: "steps"
+    # eval_steps: 20
+    # load_best_model_at_end: True
+    # log & save
+    logging_strategy: "steps"
+    logging_steps: 10
+    save_strategy: "steps"
+    save_steps: 20
+    save_total_limit: 5
+    # dataset
+    dataloader_drop_last: True
+    group_by_length: False
+seed: 114514

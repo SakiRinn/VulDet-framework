@@ -19,7 +19,7 @@ from dataloaders import eval_prompt, train_prompt
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("task", choices=['train', 'eval', 'inference'], type=str)
+    parser.add_argument("task", choices=['train', 'eval', 'infer'], type=str)
     parser.add_argument("config", type=str,
                         help="Path to the YAML file used to set hyperparameters.")
     parser.add_argument("--checkpoint-dir", default=None, type=str,
@@ -81,14 +81,15 @@ def main():
     # - Dataset
     logging.info("Start Loading dataset...")
     file_path = dataset_args.pop('file_path')
+    dataset_func = getattr(Dataset, 'from_' + dataset_args['data_format'].strip())
     if isinstance(file_path, dict):
         # Format 1
-        train_dataset = Dataset.from_json(file_path['train'], **dataset_args).map(train_prompt)
-        test_dataset = Dataset.from_json(file_path['test'], **dataset_args).map(eval_prompt)
+        train_dataset = dataset_func(file_path['train']).map(train_prompt)
+        test_dataset = dataset_func(file_path['test']).map(eval_prompt)
     else:
         # Format 2
         test_split = dataset_args.pop('test_split')
-        train_dataset, test_dataset = Dataset.from_json(file_path, **dataset_args). \
+        train_dataset, test_dataset = dataset_func(file_path, **dataset_args). \
             train_test_split(test_split, shuffle=False).values()
         train_dataset = train_dataset.map(train_prompt)
         test_dataset = test_dataset.map(eval_prompt)

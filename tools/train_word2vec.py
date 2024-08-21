@@ -1,12 +1,13 @@
 import os
-import os.path as osp
 import sys
 import argparse
 import json
 
 from gensim.models import Word2Vec
 
-sys.path.append(osp.realpath(osp.join(osp.dirname(__file__), '..')))
+root_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+os.chdir(root_dir)
+sys.path.append(root_dir)
 from dataloaders.tokenize import code_tokenize
 
 
@@ -19,13 +20,13 @@ def train_w2v(sentences, epochs=5, min_count=1, embedding_size=128,
     print(f'Total words: {len(words)}')
     print('Training...')
 
-    if not osp.exists(output_dir):
+    if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     w2v_model = Word2Vec(words, vector_size=embedding_size, min_count=min_count, workers=8)
     for i in range(epochs):
         w2v_model.train(words, total_examples=len(words), epochs=1)
-        w2v_model.save(osp.join(output_dir, f'e{i+1}.bin'))
+        w2v_model.save(os.path.join(output_dir, f'e{i+1}.bin'))
 
     print('Completed!')
 

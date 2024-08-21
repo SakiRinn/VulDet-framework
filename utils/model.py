@@ -9,7 +9,6 @@ def resize_embedding_and_tokenizer(model, tokenizer,
                                    custom_tokens: 'list[str]' = []):
     """
     Use mean initialization.
-    NOTE: This is the unoptimized version that may make your embedding size not be divisible by 64.
     """
     special_tokens_dict = {k: v for k, v in special_tokens_dict.items()
                            if getattr(tokenizer, k, None) is None}
@@ -24,24 +23,32 @@ def resize_embedding_and_tokenizer(model, tokenizer,
     logging.info(f"Number of new tokens: {len(new_tokens)}")
 
     input_embedding = model.get_input_embeddings()
+    output_embedding = model.get_output_embeddings()
+    input_mean = input_embedding.weight.data.mean(dim=0, keepdim=True)
+    output_mean = output_embedding.weight.data.mean(dim=0, keepdim=True)
+
+    input_orig_len = input_embedding.weight.data.size(0)
     input_inits = []
     for token in new_tokens:
         token_ids = tokenizer.encode(token, add_special_tokens=False)
         value = input_embedding(torch.tensor(token_ids)).mean(dim=0, keepdim=True)
         input_inits.append(value)
     input_inits = torch.cat(input_inits, dim=0)
-    output_inits = model.get_output_embeddings().weight.data.mean(dim=0, keepdim=True)
 
     if special_tokens_dict:
         tokenizer.add_special_tokens(special_tokens_dict)
     if custom_tokens:
         tokenizer.add_tokens(custom_tokens, special_tokens=False)
-    model.resize_token_embeddings(len(tokenizer))
+    # make embedding size can be divisible by 64 for optimization.
+    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=64)
 
     new_input_embedding = model.get_input_embeddings().weight.data
-    new_input_embedding[-len(new_tokens):] = input_inits
+    new_input_embedding[input_orig_len: input_orig_len + len(new_tokens)] = input_inits
+    new_input_embedding[input_orig_len + len(new_tokens):] = input_mean
+
     new_output_embedding = model.get_output_embeddings().weight.data
-    new_output_embedding[-len(new_tokens):] = output_inits
+    new_output_embedding[-len(new_tokens):] = output_mean
+
     return True
 
 

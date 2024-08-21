@@ -32,9 +32,9 @@ class TextDataset(BaseDataset):
         file_path = osp.realpath(file_path)
         if data_format is None:
             data_format = file_path.split("/")[-1].split(".")[1]
-        data_format = data_format.strip()
-        if data_format not in self.SUPPORTED_FORMATS:
-            raise TypeError(f"`{data_format}` is an unsupported format for text dataset.")
+        self.data_format = data_format.strip()
+        if self.data_format not in self.SUPPORTED_FORMATS:
+            raise TypeError(f"`{self.data_format}` is an unsupported format for text dataset.")
 
         self.code_field = code_field
         self.label_field = label_field
@@ -49,7 +49,7 @@ class TextDataset(BaseDataset):
 
     def load(self, file_path):
         load_func = getattr(self, 'from_' + self.data_format)
-        return load_func(self, file_path)
+        return load_func(file_path)
 
     def from_json(self, file_path):
         # Read
