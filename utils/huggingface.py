@@ -28,15 +28,15 @@ DEFAULT_TOKENS = {
 }
 
 
-def get_quantization_config(bits=-1):
-    if bits == 4:
+def get_quantization_config(quantization_bits=-1):
+    if quantization_bits == 4:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
             bnb_4bit_use_double_quant=True
         )
-    elif bits == 8:
+    elif quantization_bits == 8:
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True
         )
@@ -52,7 +52,7 @@ def load_datasets(dataset_name_or_path: str, test_split=0.1):
 
 
 def load_transformers(model_name_or_path: str, config_name='', tokenizer_name='',
-                      do_lower_case=False, bits=-1):
+                      do_lower_case=False, quantization_bits=-1):
     config_name = model_name_or_path if not config_name else config_name
     tokenizer_name = model_name_or_path if not tokenizer_name else tokenizer_name
 
@@ -66,12 +66,12 @@ def load_transformers(model_name_or_path: str, config_name='', tokenizer_name=''
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
         config=config,
-        quantization_config=get_quantization_config(bits),
+        quantization_config=get_quantization_config(quantization_bits),
         torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         from_tf='.ckpt' in model_name_or_path,
         device_map="auto"
     )
-    if bits != -1:
+    if quantization_bits != -1:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
     tokenizer = AutoTokenizer.from_pretrained(

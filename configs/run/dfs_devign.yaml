@@ -3,7 +3,7 @@ class:
     model: "DevignForSequence"
     optimizer: "AdamW"
 dataset:
-    file_path: <YOUR_PATH>
+    file_path: 'data/devign/devign.json'
     test_split: 0.2
     data_format: "json"
     code_field: "func"

@@ -58,10 +58,11 @@ def main():
         output_dir = args.output_dir
 
     # - Model
+    special_tokens = DEFAULT_TOKENS if transformer_args.pop('add_special_tokens', False) else {}
     custom_tokens = [t.strip() for t in transformer_args.pop('custom_tokens', [])]
     _, base_model, tokenizer = load_transformers(**transformer_args)
     is_resized = resize_embedding_and_tokenizer(
-        base_model, tokenizer, DEFAULT_TOKENS, custom_tokens)
+        base_model, tokenizer, special_tokens, custom_tokens)
     model = PeftModel.from_pretrained(
         base_model,
         args.checkpoint_dir,

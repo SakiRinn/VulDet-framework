@@ -15,7 +15,8 @@ transformer:
     config_name: <optional> str
     tokenizer_name: <optional> str
     do_lower_case: <optional> [True, False]
-    bits: <optional> [4, 8]
+    quantization_bits: <optional> [4, 8]
+    add_special_tokens: <optional> [True, False]
     custom_tokens: <optional> list
 peft:
     type: str

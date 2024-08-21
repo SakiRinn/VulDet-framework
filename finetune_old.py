@@ -137,7 +137,7 @@ def train(model_name_or_path):
         with open(adapter_config_path) as f:
             adapter_config = json.load(f)
         base_model = adapter_config["base_model_name_or_path"]
-        _, base_model, tokenizer = load_transformers(base_model, bits=8)
+        _, base_model, tokenizer = load_transformers(base_model, quantization_bits=8)
         is_resized = resize_embedding_and_tokenizer(base_model, tokenizer, DEFAULT_TOKENS, custom_tokens)
         model = PeftModel.from_pretrained(
             base_model,
@@ -146,7 +146,7 @@ def train(model_name_or_path):
             device_map="auto"
         )
     else:
-        _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
+        _, model, tokenizer = load_transformers(model_name_or_path, quantization_bits=8)
         is_resized = resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
     model.train()
     model.enable_input_require_grads()
@@ -168,7 +168,7 @@ def eval(model_name_or_path):
     max_length = 2048
     lora_dir = ''
 
-    _, model, tokenizer = load_transformers(model_name_or_path, bits=8)
+    _, model, tokenizer = load_transformers(model_name_or_path, quantization_bits=8)
     custom_tokens = [token.strip() for token in custom_tokens]
     resize_embedding_and_tokenizer(model, tokenizer, DEFAULT_TOKENS, custom_tokens)
 
@@ -239,7 +239,7 @@ def lora_merge(lora_dir, base_model='', output_dir='output/lora_merge'):
         base_model = adapter_config["base_model_name_or_path"]
         logging.info(f"Base model not given, using {base_model}")
 
-    _, base_model, tokenizer = load_transformers(base_model, bits=8)
+    _, base_model, tokenizer = load_transformers(base_model, quantization_bits=8)
 
     custom_tokens = [token.strip() for token in custom_tokens]
     resize_embedding_and_tokenizer(base_model, tokenizer, DEFAULT_TOKENS, custom_tokens)

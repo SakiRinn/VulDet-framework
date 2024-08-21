@@ -5,10 +5,7 @@ dataset:
     data_format: "json"
 transformer:
     model_name_or_path: "meta-llama/Llama-2-7b-hf"
-    bits: 8
-    custom_tokens:
-        - "[VULNERABLE]"
-        - "[BENIGN]"
+    quantization_bits: 8
 peft:
     type: lora
     task: causal_lm

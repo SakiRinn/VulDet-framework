@@ -52,9 +52,9 @@ def resize_embedding_and_tokenizer(model, tokenizer,
     return True
 
 
-def find_all_linear_names(model, int_bits=-1, add_lm_head=True):
-    clazz = bnb.nn.Linear4bit if int_bits == 4 \
-        else bnb.nn.Linear8bitLt if int_bits == 8 \
+def find_all_linear_names(model, quantization_bits=-1, add_lm_head=True):
+    clazz = bnb.nn.Linear4bit if quantization_bits == 4 \
+        else bnb.nn.Linear8bitLt if quantization_bits == 8 \
         else torch.nn.Linear
     linear_names = set()
     for name, module in model.named_modules():
