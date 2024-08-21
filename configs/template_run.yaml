@@ -1,7 +1,7 @@
 class:
-    dataset: ['TextDataset', 'GraphDataset']
-    model: ['DevignForSequence', 'ReGVD']
-    optimizer: str              # ClassName in `torch.optim`
+    dataset: <ClassName>            # in `./models/__init__.py`
+    model: <ClassName>              # in `./dataloaders/classes/__init__.py`
+    optimizer: <ClassName>          # in `torch.optim`
 dataset:
     # Format 1
     file_path:
@@ -11,12 +11,12 @@ dataset:
     file_path: str
     test_split: float [>0.0, <1.0]
     # other kwargs
-    data_format: ['json', 'csv']
+    data_format: <optional> ["json", "csv"]
     code_field: str
     label_field: str
     type_field: <optional> str
 model:
-    transformer:                # Optional
+    transformer:                    # OPTIONAL
         model_name_or_path: str
         config_name: <optional> str
         tokenizer_name: <optional> str
@@ -26,7 +26,7 @@ model:
         custom_tokens: <optional> list
     kwargs...: ...
 optimizer:
-    lr_scheduler:               # Optional
+    lr_scheduler:                   # OPTIONAL
         type: ['linear', 'cosine', 'polymonial', 'constant', 'inverse_sqrt']
         kwargs...: ...
     kwargs...: ...
